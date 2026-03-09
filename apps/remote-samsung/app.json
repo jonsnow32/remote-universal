@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "Samsung Remote",
+    "slug": "remote-samsung",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "com.samsung.remote"
+    },
+    "android": {
+      "package": "com.samsung.remote"
+    },
+    "plugins": ["expo-haptics"]
+  }
+}

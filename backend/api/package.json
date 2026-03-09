@@ -1,0 +1,22 @@
+{
+  "name": "@remote/api",
+  "version": "0.1.0",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "build": "tsc --project tsconfig.json",
+    "lint": "eslint src --ext .ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "fastify": "^4.26.0",
+    "@supabase/supabase-js": "^2.38.0",
+    "mqtt": "^5.3.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "ts-node": "^10.9.0",
+    "@types/node": "^20.0.0"
+  }
+}

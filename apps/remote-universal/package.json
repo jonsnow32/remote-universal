@@ -1,0 +1,30 @@
+{
+  "name": "remote-universal",
+  "version": "1.0.0",
+  "main": "src/App.tsx",
+  "scripts": {
+    "dev": "expo start",
+    "build": "expo export",
+    "lint": "eslint src --ext .ts,.tsx",
+    "test": "jest"
+  },
+  "dependencies": {
+    "expo": "~51.0.0",
+    "react": "18.2.0",
+    "react-native": "0.74.0",
+    "@react-navigation/native": "^6.1.0",
+    "@react-navigation/bottom-tabs": "^6.5.0",
+    "@tanstack/react-query": "^5.0.0",
+    "react-native-mmkv": "^2.12.0",
+    "zustand": "^4.4.0",
+    "@remote/core": "workspace:*",
+    "@remote/ui-kit": "workspace:*",
+    "@remote/device-sdk": "workspace:*",
+    "@remote/native-modules": "workspace:*",
+    "@remote/cloud-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/react": "^18.0.0"
+  }
+}

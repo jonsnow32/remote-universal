@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "Daikin Remote",
+    "slug": "remote-daikin",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": { "bundleIdentifier": "com.daikin.remote" },
+    "android": { "package": "com.daikin.remote" },
+    "plugins": ["expo-haptics"]
+  }
+}

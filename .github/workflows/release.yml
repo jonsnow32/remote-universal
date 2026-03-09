@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Build & Upload Expo Apps
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages
+        run: pnpm turbo run build
+
+      - name: Setup Expo
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build Universal app (EAS)
+        working-directory: apps/remote-universal
+        run: eas build --platform all --non-interactive
+
+      - name: Build Samsung app (EAS)
+        working-directory: apps/remote-samsung
+        run: eas build --platform all --non-interactive
+
+      - name: Build LG app (EAS)
+        working-directory: apps/remote-lg
+        run: eas build --platform all --non-interactive
+
+      - name: Build Daikin app (EAS)
+        working-directory: apps/remote-daikin
+        run: eas build --platform all --non-interactive

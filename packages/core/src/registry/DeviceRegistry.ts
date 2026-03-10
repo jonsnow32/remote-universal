@@ -1,4 +1,4 @@
-import { DeviceDefinition } from '../types/Device';
+import { DeviceDefinition, DeviceCapability, SupportedProtocol } from '../types/Device';
 
 /**
  * Central registry for all known device definitions.
@@ -52,5 +52,26 @@ export class DeviceRegistry {
   /** Total number of registered devices */
   get count(): number {
     return this.devices.size;
+  }
+
+  /** Returns all devices matching the given brand (case-insensitive). */
+  findByBrand(brand: string): DeviceDefinition[] {
+    const normalized = brand.toLowerCase();
+    return this.listDevices(d => d.brand.toLowerCase() === normalized);
+  }
+
+  /** Returns all devices in the given category. */
+  findByCategory(category: DeviceDefinition['category']): DeviceDefinition[] {
+    return this.listDevices(d => d.category === category);
+  }
+
+  /** Returns all devices that support the given protocol. */
+  findByProtocol(protocol: SupportedProtocol): DeviceDefinition[] {
+    return this.listDevices(d => (d.protocols as string[]).includes(protocol));
+  }
+
+  /** Returns all devices that have the given capability. */
+  findByCapability(capability: DeviceCapability): DeviceDefinition[] {
+    return this.listDevices(d => (d.capabilities as string[]).includes(capability));
   }
 }

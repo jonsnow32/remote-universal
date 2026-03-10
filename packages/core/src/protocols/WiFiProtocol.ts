@@ -1,6 +1,9 @@
 import { BaseProtocol } from './BaseProtocol';
 import { SupportedProtocol } from '../types/Device';
 
+/** Default request timeout in milliseconds. */
+const DEFAULT_TIMEOUT_MS = 5_000;
+
 /**
  * Wi-Fi / LAN protocol implementation.
  * Uses HTTP/WebSocket to communicate with devices on the local network.
@@ -23,16 +26,24 @@ export class WiFiProtocol extends BaseProtocol {
   }
 
   async send(deviceId: string, payload: string): Promise<void> {
-    const response = await fetch(`http://${deviceId}/command`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: payload,
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
 
-    if (!response.ok) {
-      throw new Error(
-        `[WiFi] HTTP ${response.status} from device ${deviceId}: ${response.statusText}`
-      );
+    try {
+      const response = await fetch(`http://${deviceId}/command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `[WiFi] HTTP ${response.status} from device ${deviceId}: ${response.statusText}`
+        );
+      }
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { Text } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -111,7 +112,7 @@ const queryClient = new QueryClient();
 
 export default function App(): React.ReactElement {
   return (
-    <View style={{ flex: 1 }}>
+    <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider theme={theme}>
           <NavigationContainer theme={navTheme}>
@@ -127,6 +128,6 @@ export default function App(): React.ReactElement {
           </NavigationContainer>
         </ThemeProvider>
       </QueryClientProvider>
-    </View>
+    </SafeAreaProvider>
   );
 }

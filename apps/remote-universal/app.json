@@ -12,6 +12,6 @@
     "android": {
       "package": "com.remoteplatform.universal"
     },
-    "plugins": []
+    "plugins": ["@remote/native-modules/plugin/withIRBlaster"]
   }
 }

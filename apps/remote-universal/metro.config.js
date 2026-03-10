@@ -13,4 +13,11 @@ config.resolver.nodeModulesPaths = [
   path.resolve(monorepoRoot, 'node_modules'),
 ];
 
+// Force all packages to resolve react-native and react from the same location
+// to prevent the dual-instance / PlatformConstants TurboModule crash.
+config.resolver.extraNodeModules = {
+  'react-native': path.resolve(monorepoRoot, 'node_modules/react-native'),
+  'react': path.resolve(monorepoRoot, 'node_modules/react'),
+};
+
 module.exports = config;

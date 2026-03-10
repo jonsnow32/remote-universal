@@ -7,6 +7,6 @@
     "userInterfaceStyle": "dark",
     "ios": { "bundleIdentifier": "com.lg.remote" },
     "android": { "package": "com.lg.remote" },
-    "plugins": ["expo-haptics"]
+    "plugins": []
   }
 }

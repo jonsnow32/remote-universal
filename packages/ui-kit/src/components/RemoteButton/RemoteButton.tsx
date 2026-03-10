@@ -8,7 +8,7 @@ import {
   TextStyle,
   GestureResponderEvent,
 } from 'react-native';
-import * as Haptics from 'expo-haptics';
+import type * as HapticsType from 'expo-haptics';
 import { useTheme } from '../../theme/ThemeProvider';
 
 export interface RemoteButtonProps {
@@ -61,7 +61,13 @@ export function RemoteButton({
   };
 
   const handlePress = (event: GestureResponderEvent): void => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const Haptics = require('expo-haptics') as typeof HapticsType;
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch (_) {
+      // expo-haptics unavailable (simulator or missing peer)
+    }
     onPress(event);
   };
 

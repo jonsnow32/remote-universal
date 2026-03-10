@@ -11,6 +11,6 @@
     "android": {
       "package": "com.samsung.remote"
     },
-    "plugins": ["expo-haptics"]
+    "plugins": []
   }
 }

@@ -7,6 +7,6 @@
     "userInterfaceStyle": "dark",
     "ios": { "bundleIdentifier": "com.daikin.remote" },
     "android": { "package": "com.daikin.remote" },
-    "plugins": ["expo-haptics"]
+    "plugins": []
   }
 }

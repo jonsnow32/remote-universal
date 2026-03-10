@@ -8,6 +8,7 @@ import {
   StatusBar,
   Dimensions,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { SplashScreenProps } from '../../types/navigation';
 
 const { width } = Dimensions.get('window');
@@ -17,11 +18,20 @@ export function SplashScreen({ navigation }: SplashScreenProps) {
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-      Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 8, useNativeDriver: true }),
-    ]).start();
-  }, [fadeAnim, scaleAnim]);
+    
+    // Check onboarding flag first; only show splash UI for new users
+    void AsyncStorage.getItem('hasOnboarded').then(value => {
+      if (value === 'true') {
+        navigation.replace('MainTabs');
+        return;
+      }
+      // New user — run entry animation
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+        Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 8, useNativeDriver: true }),
+      ]).start();
+    });
+  }, [fadeAnim, scaleAnim, navigation]);
 
   return (
     <View style={styles.container}>

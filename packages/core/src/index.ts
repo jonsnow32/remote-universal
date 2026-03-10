@@ -1,8 +1,13 @@
-// Types
+// Types — base
 export * from './types/Device';
 export * from './types/Protocol';
 export * from './types/Command';
 export * from './types/RemoteLayout';
+
+// Types — database schema
+export * from './types/Catalog';
+export * from './types/UserData';
+export * from './types/IRLibrary';
 
 // Protocols
 export { BaseProtocol } from './protocols/BaseProtocol';

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,24 +6,106 @@ import {
   StyleSheet,
   Animated,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DeviceDiscovery } from '@remote/core';
+import type { DiscoveredDevice } from '@remote/core';
 import type { SetupCompleteScreenProps } from '../../types/navigation';
 
-const FOUND_DEVICES = [
-  { id: '1', name: 'Samsung QLED TV', icon: '📺' },
-  { id: '2', name: 'Daikin AC', icon: '❄️' },
-];
+/** Map device metadata to a display emoji. */
+function getDeviceIcon(device: DiscoveredDevice): string {
+  const name = (device.name ?? '').toLowerCase();
+  if (name.includes('samsung') || name.includes('tizen')) return '📺';
+  if (name.includes('lg') || name.includes('oled')) return '📺';
+  if (name.includes('daikin') || name.includes('aircon') || name.includes(' ac')) return '❄️';
+  if (name.includes('chromecast') || name.includes('google')) return '📡';
+  if (name.includes('apple') || name.includes('airplay') || name.includes('airprint')) return '🍎';
+  if (name.includes('amazon') || name.includes('fire tv')) return '🔥';
+  if (name.includes('sony')) return '📺';
+  if (device.source === 'ble') return '🔵';
+  return '📡';
+}
 
 export function SetupCompleteScreen({ navigation }: SetupCompleteScreenProps) {
   const checkScale = useRef(new Animated.Value(0)).current;
   const listFade = useRef(new Animated.Value(0)).current;
+  const dot1Opacity = useRef(new Animated.Value(0.3)).current;
+  const dot2Opacity = useRef(new Animated.Value(0.3)).current;
+  const dot3Opacity = useRef(new Animated.Value(0.3)).current;
 
+  const [foundDevices, setFoundDevices] = useState<DiscoveredDevice[]>([]);
+  const [scanning, setScanning] = useState(true);
+
+  // Entry animation
   useEffect(() => {
-    Animated.sequence([
-      Animated.spring(checkScale, { toValue: 1, tension: 60, friction: 7, useNativeDriver: true }),
-      Animated.timing(listFade, { toValue: 1, duration: 500, useNativeDriver: true, delay: 200 }),
-    ]).start();
-  }, [checkScale, listFade]);
+    Animated.spring(checkScale, {
+      toValue: 1,
+      tension: 60,
+      friction: 7,
+      useNativeDriver: true,
+    }).start();
+  }, [checkScale]);
+
+  // Pulsing dots while scanning is active
+  useEffect(() => {
+    if (!scanning) return;
+    const makePulse = (dot: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(dot, { toValue: 1, duration: 400, useNativeDriver: true }),
+          Animated.timing(dot, { toValue: 0.3, duration: 400, useNativeDriver: true }),
+        ])
+      );
+    const a1 = makePulse(dot1Opacity, 0);
+    const a2 = makePulse(dot2Opacity, 150);
+    const a3 = makePulse(dot3Opacity, 300);
+    a1.start(); a2.start(); a3.start();
+    return () => { a1.stop(); a2.stop(); a3.stop(); };
+  }, [scanning, dot1Opacity, dot2Opacity, dot3Opacity]);
+
+  // Live device discovery
+  useEffect(() => {
+    let cancelled = false;
+    const disc = new DeviceDiscovery();
+
+    void disc.discoverStream(
+      (device) => {
+        if (cancelled) return;
+        setFoundDevices(prev => {
+          if (prev.some(d => d.id === device.id)) return prev;
+          // Fade in the list on first hit
+          if (prev.length === 0) {
+            Animated.timing(listFade, {
+              toValue: 1,
+              duration: 400,
+              useNativeDriver: true,
+            }).start();
+          }
+          return [...prev, device];
+        });
+      },
+      6000
+    ).then(() => {
+      if (!cancelled) setScanning(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [listFade]);
+
+  const handleGoHome = () => {
+    // Mark onboarding as done so SplashScreen auto-skips next time
+    void AsyncStorage.setItem('hasOnboarded', 'true').then(() => {
+      navigation.replace('MainTabs');
+    });
+  };
+
+  const subtitle = scanning
+    ? `UniRemote is scanning your\nnetwork for devices...`
+    : foundDevices.length > 0
+      ? `Found ${foundDevices.length} device${foundDevices.length > 1 ? 's' : ''} on your network`
+      : `No devices found.\nYou can add them manually in Settings.`;
 
   return (
     <View style={styles.container}>
@@ -35,22 +117,29 @@ export function SetupCompleteScreen({ navigation }: SetupCompleteScreenProps) {
         </Animated.View>
 
         <Text style={styles.title}>You're all set!</Text>
-        <Text style={styles.subtitle}>
-          UniRemote is scanning your{'\n'}network for devices...
-        </Text>
+        <Text style={styles.subtitle}>{subtitle}</Text>
 
         <View style={styles.dotsRow}>
-          <View style={styles.dot} />
-          <View style={[styles.dot, styles.dotActive]} />
-          <View style={[styles.dot, styles.dotActive]} />
+          <Animated.View style={[styles.dot, styles.dotActive, { opacity: scanning ? dot1Opacity : 1 }]} />
+          <Animated.View style={[styles.dot, styles.dotActive, { opacity: scanning ? dot2Opacity : 1 }]} />
+          <Animated.View style={[styles.dot, styles.dotActive, { opacity: scanning ? dot3Opacity : 1 }]} />
         </View>
 
+        {scanning && foundDevices.length === 0 && (
+          <ActivityIndicator color="#00C896" style={styles.spinner} />
+        )}
+
         <Animated.View style={[styles.deviceList, { opacity: listFade }]}>
-          {FOUND_DEVICES.map(d => (
+          {foundDevices.map(d => (
             <View key={d.id} style={styles.deviceRow}>
               <Text style={styles.deviceCheck}>✓</Text>
-              <Text style={styles.deviceIcon}>{d.icon}</Text>
-              <Text style={styles.deviceName}>{d.name}</Text>
+              <Text style={styles.deviceIcon}>{getDeviceIcon(d)}</Text>
+              <Text style={styles.deviceName} numberOfLines={1}>
+                {d.name ?? d.address}
+              </Text>
+              <View style={styles.sourceBadge}>
+                <Text style={styles.sourceText}>{d.source.toUpperCase()}</Text>
+              </View>
             </View>
           ))}
         </Animated.View>
@@ -58,11 +147,13 @@ export function SetupCompleteScreen({ navigation }: SetupCompleteScreenProps) {
 
       <View style={styles.footer}>
         <TouchableOpacity
-          style={styles.btn}
-          onPress={() => navigation.navigate('MainTabs')}
+          style={[styles.btn, scanning && styles.btnSecondary]}
+          onPress={handleGoHome}
           activeOpacity={0.85}
         >
-          <Text style={styles.btnText}>Go to Home</Text>
+          <Text style={styles.btnText}>
+            {scanning ? 'Skip Scanning' : 'Go to Home'}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -115,7 +206,7 @@ const styles = StyleSheet.create({
   dotsRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 36,
+    marginBottom: 16,
   },
   dot: {
     width: 8,
@@ -126,9 +217,13 @@ const styles = StyleSheet.create({
   dotActive: {
     backgroundColor: '#00C896',
   },
+  spinner: {
+    marginBottom: 24,
+  },
   deviceList: {
     width: '100%',
     gap: 10,
+    marginTop: 8,
   },
   deviceRow: {
     flexDirection: 'row',
@@ -150,9 +245,22 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   deviceName: {
+    flex: 1,
     fontSize: 15,
     color: '#FFFFFF',
     fontWeight: '500',
+  },
+  sourceBadge: {
+    backgroundColor: '#1A2035',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  sourceText: {
+    fontSize: 10,
+    color: '#8892A4',
+    fontWeight: '600',
+    letterSpacing: 0.5,
   },
   footer: {
     paddingBottom: 48,
@@ -167,6 +275,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 12,
     elevation: 8,
+  },
+  btnSecondary: {
+    backgroundColor: '#1A2035',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   btnText: {
     color: '#FFFFFF',

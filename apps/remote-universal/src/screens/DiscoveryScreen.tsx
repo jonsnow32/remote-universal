@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Animated,
   FlatList,
+  ScrollView,
   StatusBar,
 } from 'react-native';
 import { DeviceDiscovery } from '@remote/core';
@@ -19,14 +20,38 @@ const PROTOCOLS = [
   { id: 'ble', label: 'BLE', angle: 225 },
 ];
 
+const SOURCE_COLOR: Record<string, string> = {
+  mdns: '#00C9A7',
+  ssdp: '#6C63FF',
+  ble: '#FFB347',
+  hub: '#FF6B9D',
+};
+
+function ts(): string {
+  const n = new Date();
+  return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}:${String(n.getSeconds()).padStart(2, '0')}`;
+}
+
+interface LogEntry {
+  text: string;
+  color: string;
+}
+
 export function DiscoveryScreen(): React.ReactElement {
   const [scanning, setScanning] = useState(false);
   const [devices, setDevices] = useState<DiscoveredDevice[]>([]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
 
   const ring1 = useRef(new Animated.Value(0)).current;
   const ring2 = useRef(new Animated.Value(0)).current;
   const ring3 = useRef(new Animated.Value(0)).current;
   const scanAnim = useRef<Animated.CompositeAnimation | null>(null);
+  const consoleRef = useRef<ScrollView>(null);
+
+  const addLog = useCallback((text: string, color = '#8892A4') => {
+    setLogs(prev => [...prev, { text: `[${ts()}] ${text}`, color }]);
+    setTimeout(() => consoleRef.current?.scrollToEnd({ animated: true }), 50);
+  }, []);
 
   const startRingAnimation = () => {
     const makeRing = (anim: Animated.Value, delay: number) =>
@@ -56,16 +81,38 @@ export function DiscoveryScreen(): React.ReactElement {
     if (scanning) {
       setScanning(false);
       stopRingAnimation();
+      addLog('Scan aborted by user.', '#FF4F4F');
       return;
     }
     setScanning(true);
     setDevices([]);
+    setLogs([]);
     startRingAnimation();
+
+    addLog('Starting discovery on all channels...', '#FFFFFF');
+    addLog('↳ mDNS  — googlecast · airplay · amzn-wplay · smarttv-rest', SOURCE_COLOR.mdns);
+    addLog('↳ SSDP  — Samsung Tizen :8001 probe (120 hosts)', SOURCE_COLOR.ssdp);
+    addLog('↳ BLE   — scanning for nearby BLE devices', SOURCE_COLOR.ble);
+    addLog('↳ Hub   — fetching from cloud registry', SOURCE_COLOR.hub);
+
     try {
-      const found = await discovery.discoverAll();
-      setDevices(found);
+      const found = await discovery.discoverStream(
+        (device) => {
+          const color = SOURCE_COLOR[device.source] ?? '#8892A4';
+          const label = `[${device.source.toUpperCase().padEnd(4)}] ${device.name ?? device.id} @ ${device.address}`;
+          addLog(label, color);
+          setDevices(prev => [...prev, device]);
+        },
+        8000
+      );
+      addLog(
+        found.length > 0
+          ? `Scan complete — ${found.length} device(s) found.`
+          : 'Scan complete — no devices found.',
+        found.length > 0 ? '#00C9A7' : '#8892A4'
+      );
     } catch {
-      // silent
+      addLog('Scan error.', '#FF4F4F');
     } finally {
       setScanning(false);
       stopRingAnimation();
@@ -121,17 +168,43 @@ export function DiscoveryScreen(): React.ReactElement {
         <Text style={styles.found}>Searching for devices...</Text>
       )}
 
-      {/* Device list */}
+      {/* Console */}
+      <View style={styles.console}>
+        <View style={styles.consoleHeader}>
+          <View style={styles.consoleDotRed} />
+          <View style={styles.consoleDotYellow} />
+          <View style={styles.consoleDotGreen} />
+          <Text style={styles.consoleTitle}>discovery console</Text>
+          {scanning && <Text style={styles.consolePulse}>●</Text>}
+        </View>
+        <ScrollView
+          ref={consoleRef}
+          style={styles.consoleBody}
+          showsVerticalScrollIndicator={false}
+        >
+          {logs.length === 0 ? (
+            <Text style={styles.consolePlaceholder}>Press SCAN to start discovery...</Text>
+          ) : (
+            logs.map((log, i) => (
+              <Text key={i} style={[styles.consoleLine, { color: log.color }]}>
+                {log.text}
+              </Text>
+            ))
+          )}
+        </ScrollView>
+      </View>
+
+
       {devices.length > 0 && (
         <FlatList
           data={devices}
           keyExtractor={item => item.id}
           renderItem={({ item }) => (
             <View style={styles.deviceRow}>
-              <View style={styles.deviceDot} />
+              <View style={[styles.deviceDot, { backgroundColor: SOURCE_COLOR[item.source] ?? '#00C9A7' }]} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.deviceName}>{item.name ?? item.id}</Text>
-                <Text style={styles.deviceSource}>{item.source}</Text>
+                <Text style={styles.deviceSource}>{item.source} · {item.address}</Text>
               </View>
               <View style={styles.deviceOnline} />
             </View>
@@ -250,5 +323,73 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     backgroundColor: '#00C896',
+  },
+  // Console
+  console: {
+    width: 360,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 12,
+    backgroundColor: '#080C14',
+    borderWidth: 1,
+    borderColor: '#1E2535',
+    overflow: 'hidden',
+  },
+  consoleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E2535',
+    backgroundColor: '#0D1220',
+  },
+  consoleDotRed: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#FF5F57',
+  },
+  consoleDotYellow: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#FFBD2E',
+  },
+  consoleDotGreen: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#28C840',
+  },
+  consoleTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 11,
+    color: '#4A5568',
+    fontWeight: '500',
+    letterSpacing: 0.5,
+    marginLeft: -32,
+  },
+  consolePulse: {
+    fontSize: 10,
+    color: '#00C9A7',
+  },
+  consoleBody: {
+    height: 160,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  consolePlaceholder: {
+    fontSize: 12,
+    fontFamily: 'monospace',
+    color: '#2A3147',
+    lineHeight: 18,
+  },
+  consoleLine: {
+    fontSize: 11,
+    fontFamily: 'monospace',
+    lineHeight: 18,
   },
 });

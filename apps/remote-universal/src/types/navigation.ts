@@ -7,6 +7,7 @@ export type RootStackParamList = {
   Permissions: undefined;
   SetupComplete: undefined;
   MainTabs: undefined;
+  Paywall: { trigger?: 'device_limit' | 'macro' | 'backup' | 'settings' } | undefined;
 };
 
 export type MainTabParamList = {

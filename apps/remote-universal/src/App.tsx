@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
@@ -7,6 +7,8 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@remote/ui-kit';
 import { theme } from './theme';
+import { ProProvider } from './hooks/usePro';
+import { initPurchases } from './lib/purchases';
 
 // Onboarding
 import { SplashScreen } from './screens/onboarding/SplashScreen';
@@ -15,6 +17,7 @@ import { SetupCompleteScreen } from './screens/onboarding/SetupCompleteScreen';
 
 // Main screens
 import { HomeScreen } from './screens/HomeScreen';
+import { PaywallScreen } from './screens/PaywallScreen';
 import { DiscoveryScreen } from './screens/DiscoveryScreen';
 import { TVRemoteScreen } from './screens/TVRemoteScreen';
 import { ACControlScreen } from './screens/ACControlScreen';
@@ -111,21 +114,46 @@ const navTheme = {
 const queryClient = new QueryClient();
 
 export default function App(): React.ReactElement {
+  useEffect(() => {
+    initPurchases();
+  }, []);
+
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider theme={theme}>
-          <NavigationContainer theme={navTheme}>
-            <RootStack.Navigator
-              initialRouteName="Splash"
-              screenOptions={{ headerShown: false, animation: 'fade' }}
-            >
-              <RootStack.Screen name="Splash" component={SplashScreen} />
-              <RootStack.Screen name="Permissions" component={PermissionsScreen} />
-              <RootStack.Screen name="SetupComplete" component={SetupCompleteScreen} />
-              <RootStack.Screen name="MainTabs" component={MainTabsNavigator} />
-            </RootStack.Navigator>
-          </NavigationContainer>
+          <ProProvider>
+            <NavigationContainer theme={navTheme}>
+              <RootStack.Navigator
+                initialRouteName="Splash"
+                screenOptions={{ headerShown: false, animation: 'fade' }}
+              >
+                <RootStack.Screen name="Splash" component={SplashScreen} />
+                <RootStack.Screen name="Permissions" component={PermissionsScreen} />
+                <RootStack.Screen name="SetupComplete" component={SetupCompleteScreen} />
+                <RootStack.Screen name="MainTabs" component={MainTabsNavigator} />
+                <RootStack.Screen
+                  name="Paywall"
+                  options={{ presentation: 'modal', animation: 'slide_from_bottom', headerShown: false }}
+                >
+                  {({ navigation, route }) => (
+                    <PaywallScreen
+                      onClose={() => navigation.goBack()}
+                      reason={
+                        route.params?.trigger === 'device_limit'
+                          ? "You've reached the 3-device free limit"
+                          : route.params?.trigger === 'macro'
+                          ? 'Macros & automation are a Pro feature'
+                          : route.params?.trigger === 'backup'
+                          ? 'Cloud backup is a Pro feature'
+                          : undefined
+                      }
+                    />
+                  )}
+                </RootStack.Screen>
+              </RootStack.Navigator>
+            </NavigationContainer>
+          </ProProvider>
         </ThemeProvider>
       </QueryClientProvider>
     </SafeAreaProvider>

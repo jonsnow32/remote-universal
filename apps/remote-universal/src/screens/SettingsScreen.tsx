@@ -8,6 +8,10 @@ import {
   TouchableOpacity,
   StatusBar,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../types/navigation';
+import { usePro } from '../hooks/usePro';
 
 interface SettingRow {
   id: string;
@@ -31,6 +35,8 @@ const ABOUT_ROWS: SettingRow[] = [
 ];
 
 export function SettingsScreen(): React.ReactElement {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { isPro } = usePro();
   const [settings, setSettings] = useState<Record<string, boolean>>({
     notifications: true,
     haptics: true,
@@ -48,6 +54,35 @@ export function SettingsScreen(): React.ReactElement {
       <View style={styles.header}>
         <Text style={styles.title}>Settings</Text>
       </View>
+
+      {/* Pro status banner */}
+      {isPro ? (
+        <View style={styles.proBanner}>
+          <Text style={styles.proBannerEmoji}>⚡</Text>
+          <View style={styles.proBannerText}>
+            <Text style={styles.proBannerTitle}>Pro Active</Text>
+            <Text style={styles.proBannerDesc}>All features unlocked — thank you!</Text>
+          </View>
+          <View style={styles.proActiveBadge}>
+            <Text style={styles.proActiveBadgeText}>ACTIVE</Text>
+          </View>
+        </View>
+      ) : (
+        <TouchableOpacity
+          style={styles.upgradeCard}
+          onPress={() => navigation.navigate('Paywall', { trigger: 'settings' })}
+          activeOpacity={0.85}
+        >
+          <View style={styles.upgradeCardLeft}>
+            <Text style={styles.upgradeCardEmoji}>⚡</Text>
+            <View>
+              <Text style={styles.upgradeCardTitle}>Upgrade to Pro</Text>
+              <Text style={styles.upgradeCardDesc}>Unlimited devices · Macros · Cloud sync</Text>
+            </View>
+          </View>
+          <Text style={styles.upgradeCardArrow}>›</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Profile card */}
       <View style={styles.profileCard}>
@@ -110,6 +145,46 @@ export function SettingsScreen(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
+  // Pro / upgrade banner
+  proBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1C1E2D',
+    borderWidth: 1,
+    borderColor: '#6C63FF40',
+    borderRadius: 16,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    padding: 16,
+    gap: 12,
+  },
+  proBannerEmoji: { fontSize: 24 },
+  proBannerText: { flex: 1 },
+  proBannerTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  proBannerDesc: { color: '#8892A4', fontSize: 12, marginTop: 2 },
+  proActiveBadge: {
+    backgroundColor: '#6C63FF',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  proActiveBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  upgradeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#6C63FF18',
+    borderWidth: 1,
+    borderColor: '#6C63FF',
+    borderRadius: 16,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    padding: 16,
+  },
+  upgradeCardLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  upgradeCardEmoji: { fontSize: 24 },
+  upgradeCardTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  upgradeCardDesc: { color: '#8892A4', fontSize: 12, marginTop: 2 },
+  upgradeCardArrow: { color: '#6C63FF', fontSize: 24, fontWeight: '300' },
   container: {
     flex: 1,
     backgroundColor: '#0A0E1A',

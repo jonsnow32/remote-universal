@@ -137,26 +137,67 @@ sendWithRetry(command, n): Promise<void>
 
 ## 6. Device Discovery Flow
 
-Multi-channel parallel discovery — user sees devices appear in real time.
+Multi-channel parallel discovery — user sees devices appear in real time via `discoverStream()`.
 
 ```
-mDNS/Bonjour    SSDP/UPnP      BLE Scan       IR Hub Scan    Brand Cloud API
-     ↓               ↓              ↓               ↓               ↓
-Smart TVs        Samsung TV    BT Speakers    Broadlink RM    SmartThings
-Chromecasts      LG TV         BLE AC units   SwitchBot Hub   LG ThinQ
-Apple TV         Roku          BT devices     Sensibo         Daikin Cloud
+MDNSDiscovery       SSDPDiscovery         BLEDiscovery       HubDiscovery
+(react-native-      (Samsung Tizen        (react-native-      (CloudSync.
+ zeroconf)           HTTP probe            ble-plx scan)       getRegisteredDevices)
+     ↓               port 8001)                ↓               ↓
+_googlecast._tcp         ↓               BT Speakers      SmartThings
+_airplay._tcp       Samsung TVs          BLE AC units     LG ThinQ Cloud
+_amzn-wplay._tcp    (192.168.x.1-30)     BT remotes       Daikin Cloud
+_smarttv-rest._tcp                            ↓               ↓
+     ↓                   ↓                   source: 'ble'  source: 'hub'
+source: 'mdns'      source: 'ssdp'
                                ↓
-        ┌──────────────────────────────────────────────────┐
-        │  Discovery Engine — deduplicates + normalizes    │
-        └──────────────────────────┬───────────────────────┘
+        ┌──────────────────────────────────────────────────────┐
+        │          DeviceDiscovery orchestrator                │
+        │  Promise.allSettled + race against timeoutMs (8 s)  │
+        │  deduplicate() by device.id                         │
+        │  discoverAll()    → returns merged array             │
+        │  discoverStream() → calls onDeviceFound per device  │
+        └──────────────────────────┬───────────────────────────┘
                                    ↓
-        ┌──────────────────────────────────────────────────┐
-        │  Device Registry — matches to brand + model      │
-        └──────────────────────────┬───────────────────────┘
+        ┌──────────────────────────────────────────────────────┐
+        │  DeviceRegistry — match DiscoveredDevice to model   │
+        │  CatalogRepository.layouts.resolve()                │
+        │    → model-specific → brand+category → universal    │
+        └──────────────────────────┬───────────────────────────┘
                                    ↓
-        ┌──────────────────────────────────────────────────┐
-        │  UI — device appears with correct remote layout  │
-        └──────────────────────────────────────────────────┘
+        ┌──────────────────────────────────────────────────────┐
+        │  UI — device tile appears with correct remote layout │
+        └──────────────────────────────────────────────────────┘
+```
+
+### Discovery channel details
+
+| Channel | Class | Mechanism | Finds |
+|---|---|---|---|
+| **mDNS/Bonjour** | `MDNSDiscovery` | `react-native-zeroconf` events; 4 service types in parallel | Chromecast, Apple TV, Fire TV, Tizen TVs |
+| **SSDP/HTTP probe** | `SSDPDiscovery` | HTTP GET `http://<ip>:8001/api/v2/` with 1.5 s timeout; 4 subnets × 30 hosts | Samsung Tizen smart TVs |
+| **BLE scan** | `BLEDiscovery` | `BLEModule.scanForDevices()` with configurable timeout | BT speakers, BLE AC units, BLE peripherals |
+| **Hub / Cloud** | `HubDiscovery` | `CloudSync.getRegisteredDevices()` from `@remote/cloud-sdk` | SmartThings, LG ThinQ, Daikin Cloud devices |
+
+### `DiscoveredDevice` shape
+```typescript
+interface DiscoveredDevice {
+  id:      string;               // stable deduplication key
+  address: string;               // IP or BLE address
+  name?:   string;               // human-readable (from mDNS TXT / BLE advert)
+  source:  'mdns' | 'ssdp' | 'ble' | 'hub';
+}
+```
+
+### Two invocation modes
+```typescript
+// Mode 1 — wait for all channels, return merged list
+const devices = await discovery.discoverAll(8_000);
+
+// Mode 2 — stream; UI updates as each device is found
+const devices = await discovery.discoverStream(device => {
+  setDeviceList(prev => [...prev, device]);
+}, 8_000);
 ```
 
 ---

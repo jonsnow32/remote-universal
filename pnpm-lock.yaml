@@ -236,6 +236,9 @@ importers:
       react-native-mmkv:
         specifier: ^2.12.0
         version: 2.12.2(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.4)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      react-native-purchases:
+        specifier: ^9.11.2
+        version: 9.11.2(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.4)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       react-native-safe-area-context:
         specifier: ~5.6.0
         version: 5.6.2(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.4)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -1329,6 +1332,15 @@ packages:
 
   '@react-navigation/routers@7.5.3':
     resolution: {integrity: sha512-1tJHg4KKRJuQ1/EvJxatrMef3NZXEPzwUIUZ3n1yJ2t7Q97siwRtbynRpQG9/69ebbtiZ8W3ScOZF/OmhvM4Rg==}
+
+  '@revenuecat/purchases-js-hybrid-mappings@17.44.0':
+    resolution: {integrity: sha512-8v8N0PR+AzWgZBHWeETt9md76xfqW+thgYZAdDSbTE2Tyd6NsbnbQLAxMQVHwC+2GyREBRqO2X0di3N+3jD6aw==}
+
+  '@revenuecat/purchases-js@1.27.0':
+    resolution: {integrity: sha512-PRV5jbOyQ9ehNGyp0EeBV+Ri0T0QBTDJiftg7W0/eUFhGWs9irfw3ipQdjpmoikYxckrZQLzpsFhJ6zP/M+YgQ==}
+
+  '@revenuecat/purchases-typescript-internal@17.44.0':
+    resolution: {integrity: sha512-YvSxMSiGLNNvqeIGrSwxqg5GjBkHBbB2MVSd/AvRnj97FGWsJ43kp7LMMNN6NHtghw4v42nVWG1IpznGvEOBww==}
 
   '@sideway/address@4.1.5':
     resolution: {integrity: sha512-IqO/DUQHUkPeixNQ8n0JA6102hT9CmaljNTPmQ1u8MEhBo/R4Q8eKLN/vGZxuebwOroDB4cbpjheD4+/sKFK4Q==}
@@ -3224,6 +3236,16 @@ packages:
     peerDependencies:
       react: '*'
       react-native: '>=0.71.0'
+
+  react-native-purchases@9.11.2:
+    resolution: {integrity: sha512-u+uyve9PKaqoK+SwsGTUNZbIy8ket4D0Px4fgI5XHtq18TlXV6gOAnwnRm61cxNhjP/H1ElGXC4z05zm1LfocA==}
+    peerDependencies:
+      react: '>= 16.6.3'
+      react-native: '>= 0.73.0'
+      react-native-web: '*'
+    peerDependenciesMeta:
+      react-native-web:
+        optional: true
 
   react-native-safe-area-context@5.6.2:
     resolution: {integrity: sha512-4XGqMNj5qjUTYywJqpdWZ9IG8jgkS3h06sfVjfw5yZQZfWnRFXczi0GnYyFyCc2EBps/qFmoCH8fez//WumdVg==}
@@ -5418,6 +5440,14 @@ snapshots:
     dependencies:
       nanoid: 3.3.11
 
+  '@revenuecat/purchases-js-hybrid-mappings@17.44.0':
+    dependencies:
+      '@revenuecat/purchases-js': 1.27.0
+
+  '@revenuecat/purchases-js@1.27.0': {}
+
+  '@revenuecat/purchases-typescript-internal@17.44.0': {}
+
   '@sideway/address@4.1.5':
     dependencies:
       '@hapi/hoek': 9.3.0
@@ -7545,6 +7575,13 @@ snapshots:
 
   react-native-mmkv@2.12.2(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.4)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
     dependencies:
+      react: 19.1.0
+      react-native: 0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.4)(@types/react@19.1.17)(react@19.1.0)
+
+  react-native-purchases@9.11.2(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.4)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
+    dependencies:
+      '@revenuecat/purchases-js-hybrid-mappings': 17.44.0
+      '@revenuecat/purchases-typescript-internal': 17.44.0
       react: 19.1.0
       react-native: 0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.4)(@types/react@19.1.17)(react@19.1.0)
 

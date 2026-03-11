@@ -1,91 +1,190 @@
-import { DeviceCommand } from '../types/Command';
+import {
+  DeviceCommand,
+  MacroStepStatus,
+  MacroStepResult,
+  MacroRunResult,
+  MacroRunOptions,
+} from '../types/Command';
 import { CommandDispatcher } from './CommandDispatcher';
 
-/**
- * Macro: a named sequence of commands with inter-command delays.
- */
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 export interface Macro {
   name: string;
-  commands: DeviceCommand[];
-  delayMs: number;
+  commands: MacroCommand[];
+  /** Default inter-step delay in ms (can be overridden per step) */
+  defaultDelayMs: number;
 }
 
-/**
- * Manages named macros and executes sequences of device commands.
- */
+/** A command within a macro, with per-step delay and protocol hint */
+export interface MacroCommand extends DeviceCommand {
+  /** Wait this many ms AFTER sending before proceeding to next step. Default 500. */
+  delayAfterMs?: number;
+  /** Hint for retry strategy: 'ir' gets more retries (fire-and-forget) */
+  protocolHint?: 'ir' | 'wifi' | 'ble';
+}
+
+// ─── Engine ───────────────────────────────────────────────────────────────────
+
 export class MacroEngine {
   private readonly macros = new Map<string, Macro>();
 
   constructor(private readonly dispatcher: CommandDispatcher) {}
 
-  /**
-   * Executes a sequence of commands with a delay between each.
-   * @param commands - Array of commands to run in order
-   * @param delayMs - Milliseconds to wait between commands (default: 300)
-   */
-  async enqueueMacro(commands: DeviceCommand[], delayMs = 300): Promise<void> {
-    for (let i = 0; i < commands.length; i++) {
-      const cmd = commands[i];
-      await this.dispatcher.dispatch(cmd.deviceId, cmd.action, cmd.value);
+  // ── Named macro registry ──────────────────────────────────────────────────
 
-      if (i < commands.length - 1) {
-        await delay(delayMs);
-      }
-    }
+  save(name: string, commands: MacroCommand[], defaultDelayMs = 500): void {
+    this.macros.set(name, { name, commands, defaultDelayMs });
   }
 
-  /**
-   * Saves a named macro for later execution.
-   * @param name - Unique macro name
-   * @param commands - Command sequence
-   * @param delayMs - Inter-command delay in ms (default: 300)
-   */
-  save(name: string, commands: DeviceCommand[], delayMs = 300): void {
-    this.macros.set(name, { name, commands, delayMs });
-  }
-
-  /**
-   * Loads a saved macro by name.
-   * @param name - Macro name
-   * @returns The macro definition
-   * @throws Error if macro not found
-   */
   load(name: string): Macro {
     const macro = this.macros.get(name);
     if (!macro) {
       throw new Error(
-        `[MacroEngine] Macro "${name}" not found. Available macros: ${this.list().join(', ') || 'none'}`
+        `[MacroEngine] Macro "${name}" not found. Available: ${this.list().join(', ') || 'none'}`,
       );
     }
     return macro;
   }
 
-  /**
-   * Returns a list of all saved macro names.
-   */
   list(): string[] {
     return Array.from(this.macros.keys());
   }
 
-  /**
-   * Deletes a named macro.
-   * @param name - Macro name to delete
-   * @returns true if deleted, false if not found
-   */
   delete(name: string): boolean {
     return this.macros.delete(name);
   }
 
+  // ── Execution ─────────────────────────────────────────────────────────────
+
   /**
-   * Executes a previously saved macro by name.
-   * @param name - Macro name
+   * Run a named macro.
+   * Returns a full result object; never throws — all errors are captured per-step.
    */
-  async run(name: string): Promise<void> {
+  async run(name: string, options?: MacroRunOptions): Promise<MacroRunResult> {
     const macro = this.load(name);
-    await this.enqueueMacro(macro.commands, macro.delayMs);
+    return this.execute(macro.commands, { ...options, defaultDelay: macro.defaultDelayMs });
+  }
+
+  /**
+   * Execute an ad-hoc list of commands with retry, progress callbacks, and abort support.
+   * Never throws — errors are captured in per-step results.
+   */
+  async execute(
+    commands: MacroCommand[],
+    options: MacroRunOptions & { defaultDelay?: number } = {},
+  ): Promise<MacroRunResult> {
+    const {
+      onStepUpdate,
+      signal,
+      retryIR = 2,
+      retryNetwork = 1,
+      continueOnError = true,
+      defaultDelay = 500,
+    } = options;
+
+    const stepResults: MacroStepResult[] = commands.map((_, i) => ({
+      stepIndex: i,
+      status: 'pending' as MacroStepStatus,
+      durationMs: 0,
+      retries: 0,
+    }));
+
+    const wallStart = Date.now();
+    let aborted = false;
+
+    for (let i = 0; i < commands.length; i++) {
+      // Check for abort before each step
+      if (signal?.aborted) {
+        aborted = true;
+        for (let j = i; j < commands.length; j++) {
+          stepResults[j].status = 'skipped';
+          onStepUpdate?.(j, 'skipped');
+        }
+        break;
+      }
+
+      const cmd = commands[i];
+      const maxRetries = cmd.protocolHint === 'ir' ? retryIR : retryNetwork;
+
+      onStepUpdate?.(i, 'running');
+      stepResults[i].status = 'running';
+
+      const stepStart = Date.now();
+      let lastError: string | undefined;
+      let succeeded = false;
+
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        if (signal?.aborted) { aborted = true; break; }
+
+        try {
+          await this.dispatcher.dispatch(cmd.deviceId, cmd.action, cmd.value);
+          succeeded = true;
+          stepResults[i].retries = attempt;
+          break;
+        } catch (err) {
+          lastError = err instanceof Error ? err.message : String(err);
+          if (attempt < maxRetries) {
+            // Brief back-off between retries (100 ms × attempt)
+            await delay(100 * (attempt + 1));
+          }
+        }
+      }
+
+      const stepDuration = Date.now() - stepStart;
+      stepResults[i].durationMs = stepDuration;
+
+      if (aborted) {
+        stepResults[i].status = 'skipped';
+        onStepUpdate?.(i, 'skipped');
+        for (let j = i + 1; j < commands.length; j++) {
+          stepResults[j].status = 'skipped';
+          onStepUpdate?.(j, 'skipped');
+        }
+        break;
+      }
+
+      if (succeeded) {
+        stepResults[i].status = 'success';
+        onStepUpdate?.(i, 'success', { durationMs: stepDuration });
+      } else {
+        stepResults[i].status = 'failed';
+        stepResults[i].error = lastError;
+        onStepUpdate?.(i, 'failed', { error: lastError, durationMs: stepDuration });
+
+        if (!continueOnError) {
+          // Mark remaining as skipped
+          for (let j = i + 1; j < commands.length; j++) {
+            stepResults[j].status = 'skipped';
+            onStepUpdate?.(j, 'skipped');
+          }
+          break;
+        }
+      }
+
+      // Inter-step delay (skip after last step or if aborting)
+      const waitMs = cmd.delayAfterMs ?? defaultDelay;
+      if (i < commands.length - 1 && waitMs > 0 && !signal?.aborted) {
+        await delay(waitMs);
+      }
+    }
+
+    const successCount = stepResults.filter(s => s.status === 'success').length;
+    const failCount = stepResults.filter(s => s.status === 'failed').length;
+
+    return {
+      steps: stepResults,
+      totalDurationMs: Date.now() - wallStart,
+      successCount,
+      failCount,
+      aborted,
+    };
   }
 }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
+

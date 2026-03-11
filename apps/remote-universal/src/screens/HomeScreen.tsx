@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 import {
   View,
   Text,
@@ -46,23 +48,23 @@ interface StoredDevice {
 
 const STORAGE_KEY = '@remote/user_devices';
 
-const CATEGORY_META: Record<DeviceCategory, { label: string; emoji: string; color: string }> = {
-  tv:              { label: 'TV',             emoji: '📺', color: '#F5A623' },
-  ac:              { label: 'Air Cond.',      emoji: '❄️', color: '#00C9A7' },
-  speaker:         { label: 'Speaker',        emoji: '🔊', color: '#6C63FF' },
-  soundbar:        { label: 'Soundbar',       emoji: '🎵', color: '#6C63FF' },
-  projector:       { label: 'Projector',      emoji: '📽️', color: '#FF6B9D' },
-  set_top_box:     { label: 'Set-Top Box',    emoji: '📡', color: '#FFB347' },
-  streaming_stick: { label: 'Streaming',      emoji: '🎬', color: '#FF4F4F' },
-  fan:             { label: 'Fan',            emoji: '💨', color: '#4FC3F7' },
-  light:           { label: 'Smart Light',   emoji: '💡',  color: '#FFEB3B' },
-  other:           { label: 'Other',         emoji: '🔧',  color: '#8892A4' },
+const CATEGORY_META: Record<DeviceCategory, { label: string; icon: IoniconName; color: string }> = {
+  tv:              { label: 'TV',           icon: 'tv-outline',              color: '#F5A623' },
+  ac:              { label: 'Air Cond.',    icon: 'snow-outline',            color: '#00C9A7' },
+  speaker:         { label: 'Speaker',     icon: 'volume-high-outline',     color: '#6C63FF' },
+  soundbar:        { label: 'Soundbar',    icon: 'musical-notes-outline',   color: '#6C63FF' },
+  projector:       { label: 'Projector',   icon: 'film-outline',            color: '#FF6B9D' },
+  set_top_box:     { label: 'Set-Top Box', icon: 'cube-outline',            color: '#FFB347' },
+  streaming_stick: { label: 'Streaming',   icon: 'play-circle-outline',     color: '#FF4F4F' },
+  fan:             { label: 'Fan',         icon: 'refresh-circle-outline',  color: '#4FC3F7' },
+  light:           { label: 'Smart Light', icon: 'bulb-outline',            color: '#FFEB3B' },
+  other:           { label: 'Other',       icon: 'apps-outline',            color: '#8892A4' },
 };
 
-const PROTOCOL_META: Record<'ir' | 'wifi' | 'ble', { label: string; emoji: string; description: string }> = {
-  ir:   { label: 'Infrared',  emoji: '📡', description: 'Classic IR remote (TV, AC, …)' },
-  wifi: { label: 'Wi-Fi',     emoji: '📶', description: 'Smart device on local network' },
-  ble:  { label: 'Bluetooth', emoji: '🔵', description: 'BLE-enabled device' },
+const PROTOCOL_META: Record<'ir' | 'wifi' | 'ble', { label: string; icon: IoniconName; description: string }> = {
+  ir:   { label: 'Infrared',  icon: 'radio-outline',     description: 'Classic IR remote (TV, AC, …)' },
+  wifi: { label: 'Wi-Fi',     icon: 'wifi-outline',      description: 'Smart device on local network' },
+  ble:  { label: 'Bluetooth', icon: 'bluetooth-outline', description: 'BLE-enabled device' },
 };
 
 const POPULAR_BRANDS: Record<DeviceCategory, string[]> = {
@@ -104,7 +106,7 @@ function DeviceRow({ device, onPress }: { device: StoredDevice; onPress: () => v
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
       <View style={[styles.cardAccent, { backgroundColor: meta.color }]} />
       <View style={[styles.cardIcon, { backgroundColor: meta.color + '22' }]}>
-        <Text style={{ fontSize: 22 }}>{meta.emoji}</Text>
+        <Ionicons name={meta.icon} size={22} color={meta.color} />
       </View>
       <View style={styles.cardInfo}>
         <Text style={styles.cardName} numberOfLines={1}>{device.nickname || device.model}</Text>
@@ -135,7 +137,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
   return (
     <View style={styles.emptyContainer}>
       <Animated.View style={[styles.emptyIconWrap, { transform: [{ scale: pulse }] }]}>
-        <Text style={{ fontSize: 52 }}>📡</Text>
+        <Ionicons name="radio-outline" size={64} color="#3A4257" />
       </Animated.View>
       <Text style={styles.emptyTitle}>No devices yet</Text>
       <Text style={styles.emptySub}>Add your TV, air conditioner, or any IR / Wi-Fi device to get started.</Text>
@@ -224,7 +226,7 @@ function AddDeviceModal({
               onPress={() => setW(prev => ({ ...prev, category: key }))}
               activeOpacity={0.7}
             >
-              <Text style={{ fontSize: 28, marginBottom: 6 }}>{meta.emoji}</Text>
+              <Ionicons name={meta.icon} size={28} color={w.category === key ? meta.color : '#8892A4'} style={{ marginBottom: 6 }} />
               <Text style={[styles.categoryTileLabel, w.category === key && { color: meta.color }]}>
                 {meta.label}
               </Text>
@@ -237,7 +239,8 @@ function AddDeviceModal({
         onPress={() => w.category && goStep(2)}
         activeOpacity={0.8}
       >
-        <Text style={styles.wizardPrimaryBtnText}>Next →</Text>
+<Text style={styles.wizardPrimaryBtnText}>Next</Text>
+          <Ionicons name="arrow-forward" size={16} color="#FFFFFF" style={{ marginLeft: 4 }} />
       </TouchableOpacity>
     </View>
   );
@@ -259,20 +262,22 @@ function AddDeviceModal({
               <Text style={[styles.brandRowText, w.brand === brand && styles.brandRowTextSelected]}>
                 {brand}
               </Text>
-              {w.brand === brand && <Text style={{ color: '#6C63FF' }}>✓</Text>}
+              {w.brand === brand && <Ionicons name="checkmark" size={18} color="#6C63FF" />}
             </TouchableOpacity>
           ))}
         </ScrollView>
         <View style={styles.wizardFooterRow}>
           <TouchableOpacity style={styles.wizardSecondaryBtn} onPress={() => goStep(1)} activeOpacity={0.8}>
-            <Text style={styles.wizardSecondaryBtnText}>← Back</Text>
+            <Ionicons name="arrow-back" size={16} color="#8892A4" style={{ marginRight: 4 }} />
+            <Text style={styles.wizardSecondaryBtnText}>Back</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.wizardPrimaryBtn, { flex: 1 }, !w.brand && styles.wizardBtnDisabled]}
             onPress={() => w.brand && goStep(3)}
             activeOpacity={0.8}
           >
-            <Text style={styles.wizardPrimaryBtnText}>Next →</Text>
+<Text style={styles.wizardPrimaryBtnText}>Next</Text>
+          <Ionicons name="arrow-forward" size={16} color="#FFFFFF" style={{ marginLeft: 4 }} />
           </TouchableOpacity>
         </View>
       </View>
@@ -323,7 +328,7 @@ function AddDeviceModal({
                 onPress={() => setW(p => ({ ...p, protocol: key }))}
                 activeOpacity={0.7}
               >
-                <Text style={{ fontSize: 16 }}>{meta.emoji}</Text>
+                <Ionicons name={meta.icon} size={16} color={w.protocol === key ? '#6C63FF' : '#8892A4'} />
                 <Text style={[styles.protocolChipLabel, w.protocol === key && { color: '#6C63FF' }]}>
                   {meta.label}
                 </Text>
@@ -349,13 +354,15 @@ function AddDeviceModal({
 
         <View style={styles.wizardFooterRow}>
           <TouchableOpacity style={styles.wizardSecondaryBtn} onPress={() => goStep(2)} activeOpacity={0.8}>
-            <Text style={styles.wizardSecondaryBtnText}>← Back</Text>
-          </TouchableOpacity>
+          <Ionicons name="arrow-back" size={16} color="#8892A4" style={{ marginRight: 4 }} />
+          <Text style={styles.wizardSecondaryBtnText}>Back</Text>
+        </TouchableOpacity>
           <TouchableOpacity
             style={[styles.wizardPrimaryBtn, { flex: 1 }, !canSave && styles.wizardBtnDisabled]}
             onPress={canSave ? handleSave : undefined}
             activeOpacity={0.8}
           >
+            <Ionicons name="save-outline" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
             <Text style={styles.wizardPrimaryBtnText}>Save Device</Text>
           </TouchableOpacity>
         </View>
@@ -378,7 +385,7 @@ function AddDeviceModal({
             ))}
           </View>
           <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn}>
-            <Text style={styles.modalCloseText}>✕</Text>
+            <Ionicons name="close" size={18} color="#8892A4" />
           </TouchableOpacity>
         </View>
 
@@ -455,7 +462,7 @@ export function HomeScreen(): React.ReactElement {
           </Text>
         </View>
         <TouchableOpacity style={styles.bellBtn}>
-          <Text style={{ fontSize: 20 }}>🔔</Text>
+          <Ionicons name="notifications-outline" size={22} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
 
@@ -481,7 +488,7 @@ export function HomeScreen(): React.ReactElement {
       {/* FAB — only shown when there are already devices */}
       {devices.length > 0 && (
         <TouchableOpacity style={styles.fab} onPress={openAddDeviceModal} activeOpacity={0.85}>
-          <Text style={styles.fabText}>+</Text>
+          <Ionicons name="add" size={30} color="#FFFFFF" />
         </TouchableOpacity>
       )}
 
@@ -826,6 +833,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   wizardPrimaryBtn: {
+    flexDirection: 'row',
     backgroundColor: '#6C63FF',
     borderRadius: 14,
     paddingVertical: 14,
@@ -838,6 +846,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   wizardSecondaryBtn: {
+    flexDirection: 'row',
     backgroundColor: '#141928',
     borderRadius: 14,
     paddingVertical: 14,

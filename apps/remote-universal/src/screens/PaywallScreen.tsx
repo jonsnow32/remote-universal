@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View,
   Text,
@@ -119,7 +120,7 @@ export function PaywallScreen({ onClose, reason }: PaywallScreenProps): React.Re
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Close button */}
       <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-        <Text style={styles.closeBtnText}>✕</Text>
+        <Ionicons name="close" size={16} color="#8892A4" />
       </TouchableOpacity>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}>
@@ -127,7 +128,8 @@ export function PaywallScreen({ onClose, reason }: PaywallScreenProps): React.Re
         {/* Hero */}
         <View style={styles.hero}>
           <View style={styles.proBadge}>
-            <Text style={styles.proBadgeText}>⚡ PRO</Text>
+            <Ionicons name="flash" size={12} color="#FFFFFF" />
+            <Text style={styles.proBadgeText}> PRO</Text>
           </View>
           <Text style={styles.heroTitle}>Upgrade to Pro</Text>
           <Text style={styles.heroSub}>
@@ -146,7 +148,7 @@ export function PaywallScreen({ onClose, reason }: PaywallScreenProps): React.Re
                 <Text style={styles.featureTitle}>{f.title}</Text>
                 <Text style={styles.featureDesc}>{f.desc}</Text>
               </View>
-              <Text style={styles.checkmark}>✓</Text>
+              <Ionicons name="checkmark-circle" size={20} color="#6C63FF" />
             </View>
           ))}
         </View>
@@ -269,6 +271,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   proBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#6C63FF',
     paddingHorizontal: 14,
     paddingVertical: 5,

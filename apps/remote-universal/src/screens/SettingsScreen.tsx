@@ -12,6 +12,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 import { usePro } from '../hooks/usePro';
+import { Ionicons } from '@expo/vector-icons';
 
 interface SettingRow {
   id: string;
@@ -58,7 +59,7 @@ export function SettingsScreen(): React.ReactElement {
       {/* Pro status banner */}
       {isPro ? (
         <View style={styles.proBanner}>
-          <Text style={styles.proBannerEmoji}>⚡</Text>
+          <Ionicons name="flash" size={24} color="#6C63FF" />
           <View style={styles.proBannerText}>
             <Text style={styles.proBannerTitle}>Pro Active</Text>
             <Text style={styles.proBannerDesc}>All features unlocked — thank you!</Text>
@@ -74,13 +75,13 @@ export function SettingsScreen(): React.ReactElement {
           activeOpacity={0.85}
         >
           <View style={styles.upgradeCardLeft}>
-            <Text style={styles.upgradeCardEmoji}>⚡</Text>
+            <Ionicons name="flash" size={24} color="#6C63FF" />
             <View>
               <Text style={styles.upgradeCardTitle}>Upgrade to Pro</Text>
               <Text style={styles.upgradeCardDesc}>Unlimited devices · Macros · Cloud sync</Text>
             </View>
           </View>
-          <Text style={styles.upgradeCardArrow}>›</Text>
+          <Ionicons name="chevron-forward" size={24} color="#6C63FF" />
         </TouchableOpacity>
       )}
 
@@ -130,7 +131,7 @@ export function SettingsScreen(): React.ReactElement {
               <Text style={styles.rowLabel}>{item.label}</Text>
               {item.description && <Text style={styles.rowDesc}>{item.description}</Text>}
             </View>
-            <Text style={styles.chevron}>›</Text>
+            <Ionicons name="chevron-forward" size={18} color="#4A5568" />
           </TouchableOpacity>
         ))}
       </View>

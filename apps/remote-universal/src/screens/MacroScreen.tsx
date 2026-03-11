@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -6,70 +6,134 @@ import {
   StyleSheet,
   FlatList,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { MacroStackParamList } from '../types/navigation';
+import { useMacros } from '../hooks/useMacros';
+import { StoredMacro } from '../lib/macroStore';
+import { MacroRunModal } from '../components/MacroRunModal';
 
 type MacroNav = NativeStackNavigationProp<MacroStackParamList, 'MacroList'>;
 
-interface Macro {
-  id: string;
-  name: string;
-  steps: number;
-  icon: string;
-  color: string;
+// ─── Empty State ──────────────────────────────────────────────────────────────
+
+function EmptyState({ onAdd }: { onAdd: () => void }) {
+  return (
+    <View style={styles.emptyContainer}>
+      <View style={styles.emptyIconBg}>
+        <Ionicons name="flash-outline" size={36} color="#6C63FF" />
+      </View>
+      <Text style={styles.emptyTitle}>No Quick Actions Yet</Text>
+      <Text style={styles.emptyDesc}>
+        Create a macro to control multiple devices with one tap — Movie Night, Good Morning, Sleep Mode and more.
+      </Text>
+      <TouchableOpacity style={styles.emptyBtn} onPress={onAdd} activeOpacity={0.85}>
+        <Ionicons name="add" size={16} color="#FFFFFF" />
+        <Text style={styles.emptyBtnText}>Create First Macro</Text>
+      </TouchableOpacity>
+    </View>
+  );
 }
 
-const MACROS: Macro[] = [
-  { id: '1', name: 'Movie Night', steps: 3, icon: '🎬', color: '#6C63FF' },
-  { id: '2', name: 'Good Morning', steps: 4, icon: '☀️', color: '#F5A623' },
-  { id: '3', name: 'Sleep Mode', steps: 2, icon: '🌙', color: '#4A6BCC' },
-  { id: '4', name: 'Party Mode', steps: 5, icon: '🎉', color: '#FF4F9A' },
-];
+// ─── Macro Row ────────────────────────────────────────────────────────────────
+
+interface MacroRowProps {
+  macro: StoredMacro;
+  onEdit: () => void;
+  onRun: () => void;
+}
+
+function MacroRow({ macro, onEdit, onRun }: MacroRowProps) {
+  return (
+    <TouchableOpacity style={styles.macroRow} onPress={onEdit} activeOpacity={0.8}>
+      <View style={[styles.macroIconBg, { backgroundColor: macro.color + '22' }]}>
+        <Ionicons name={macro.iconName as any} size={24} color={macro.color} />
+      </View>
+      <View style={styles.macroInfo}>
+        <Text style={styles.macroName}>{macro.name}</Text>
+        <Text style={styles.macroSteps}>
+          {macro.steps.length} step{macro.steps.length !== 1 ? 's' : ''}
+        </Text>
+      </View>
+      <TouchableOpacity
+        style={[styles.runBtn, { backgroundColor: macro.color }]}
+        onPress={onRun}
+        activeOpacity={0.8}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons name="play" size={12} color="#FFFFFF" />
+        <Text style={styles.runBtnText}>Run</Text>
+      </TouchableOpacity>
+    </TouchableOpacity>
+  );
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 export function MacroScreen(): React.ReactElement {
   const navigation = useNavigation<MacroNav>();
+  const { macros, isLoading, refresh } = useMacros();
+  const [activeMacro, setActiveMacro] = useState<StoredMacro | null>(null);
+
+  const handleRun = (macro: StoredMacro) => {
+    if (macro.steps.length === 0) return;
+    setActiveMacro(macro);
+  };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0A0E1A" />
 
       <View style={styles.header}>
-        <Text style={styles.title}>Macros</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={() => navigation.navigate('MacroEditor', {})}>
-          <Text style={styles.addBtnText}>+</Text>
+        <View>
+          <Text style={styles.title}>Quick Actions</Text>
+          {macros.length > 0 && (
+            <Text style={styles.subtitle}>{macros.length} macro{macros.length !== 1 ? 's' : ''}</Text>
+          )}
+        </View>
+        <TouchableOpacity
+          style={styles.addBtn}
+          onPress={() => navigation.navigate('MacroEditor', {})}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="add" size={22} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={MACROS}
-        keyExtractor={item => item.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.macroRow}
-            onPress={() => navigation.navigate('MacroEditor', { macroId: item.id, macroName: item.name })}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.macroIcon, { backgroundColor: item.color + '22' }]}>
-              <Text style={{ fontSize: 24 }}>{item.icon}</Text>
-            </View>
-            <View style={styles.macroInfo}>
-              <Text style={styles.macroName}>{item.name}</Text>
-              <Text style={styles.macroSteps}>{item.steps} steps</Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.runBtn, { backgroundColor: item.color }]}
-              onPress={() => { /* run macro */ }}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.runBtnText}>Run</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        )}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-      />
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator color="#6C63FF" />
+        </View>
+      ) : macros.length === 0 ? (
+        <EmptyState onAdd={() => navigation.navigate('MacroEditor', {})} />
+      ) : (
+        <FlatList
+          data={macros}
+          keyExtractor={item => item.id}
+          renderItem={({ item }) => (
+            <MacroRow
+              macro={item}
+              onEdit={() => navigation.navigate('MacroEditor', { macroId: item.id, macroName: item.name })}
+              onRun={() => handleRun(item)}
+            />
+          )}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          onRefresh={refresh}
+          refreshing={isLoading}
+        />
+      )}
+
+      {activeMacro && (
+        <MacroRunModal
+          macro={activeMacro}
+          visible={!!activeMacro}
+          onClose={() => setActiveMacro(null)}
+        />
+      )}
     </View>
   );
 }
@@ -92,6 +156,11 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#FFFFFF',
   },
+  subtitle: {
+    fontSize: 13,
+    color: '#8892A4',
+    marginTop: 2,
+  },
   addBtn: {
     width: 36,
     height: 36,
@@ -100,12 +169,56 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  addBtnText: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '300',
-    lineHeight: 26,
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  // Empty state
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+  },
+  emptyIconBg: {
+    width: 72,
+    height: 72,
+    borderRadius: 22,
+    backgroundColor: '#6C63FF18',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  emptyDesc: {
+    fontSize: 14,
+    color: '#8892A4',
+    textAlign: 'center',
+    lineHeight: 21,
+    marginBottom: 28,
+  },
+  emptyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#6C63FF',
+    borderRadius: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 24,
+    gap: 7,
+  },
+  emptyBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  // Macro list
   list: {
     paddingHorizontal: 20,
     gap: 12,
@@ -116,12 +229,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#141928',
     borderRadius: 16,
-    padding: 16,
+    padding: 14,
     gap: 14,
   },
-  macroIcon: {
-    width: 52,
-    height: 52,
+  macroIconBg: {
+    width: 50,
+    height: 50,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
@@ -130,23 +243,26 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   macroName: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
     color: '#FFFFFF',
     marginBottom: 2,
   },
   macroSteps: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#8892A4',
   },
   runBtn: {
-    paddingHorizontal: 18,
-    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 20,
+    gap: 5,
   },
   runBtnText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
   },
 });

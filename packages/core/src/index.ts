@@ -70,7 +70,7 @@ export { HubDiscovery } from './discovery/HubDiscovery';
 export { CommandQueue } from './commands/CommandQueue';
 export { CommandDispatcher } from './commands/CommandDispatcher';
 export { MacroEngine } from './commands/MacroEngine';
-export type { Macro } from './commands/MacroEngine';
+export type { Macro, MacroCommand } from './commands/MacroEngine';
 
 // Registry
 export { DeviceRegistry } from './registry/DeviceRegistry';

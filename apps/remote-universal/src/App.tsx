@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -58,12 +59,14 @@ function MacroNavigator() {
   );
 }
 
-const TAB_ICONS: Record<string, string> = {
-  Home: '🏠',
-  Devices: '📡',
-  Macros: '⚡',
-  Guide: '📺',
-  Settings: '⚙️',
+type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
+
+const TAB_ICONS: Record<string, { filled: IoniconName; outline: IoniconName }> = {
+  Home:     { filled: 'home',               outline: 'home-outline' },
+  Devices:  { filled: 'hardware-chip',      outline: 'hardware-chip-outline' },
+  Macros:   { filled: 'flash',              outline: 'flash-outline' },
+  Guide:    { filled: 'tv',                 outline: 'tv-outline' },
+  Settings: { filled: 'settings-sharp',     outline: 'settings-outline' },
 };
 
 function MainTabsNavigator() {
@@ -85,9 +88,13 @@ function MainTabsNavigator() {
           fontSize: 11,
           fontWeight: '600',
         },
-        tabBarIcon: ({ color }) => (
-          <Text style={{ fontSize: 21 }}>{TAB_ICONS[route.name] ?? '●'}</Text>
-        ),
+        tabBarIcon: ({ color, focused }) => {
+          const icons = TAB_ICONS[route.name];
+          const name: IoniconName = icons
+            ? (focused ? icons.filled : icons.outline)
+            : 'ellipse-outline';
+          return <Ionicons name={name} size={22} color={color} />;
+        },
       })}
     >
       <MainTab.Screen name="Home" component={HomeNavigator} />

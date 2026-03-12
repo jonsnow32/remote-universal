@@ -744,6 +744,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1.5,
     borderColor: '#1E2535',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
   },

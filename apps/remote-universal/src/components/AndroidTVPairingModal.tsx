@@ -8,11 +8,24 @@ import {
   ActivityIndicator,
   TextInput,
   KeyboardAvoidingView,
+  TurboModuleRegistry,
+  NativeModules,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AndroidTV } from '@remote/device-sdk';
+
+/** Returns true when the AndroidTV native module is linked. Checked lazily at
+ *  call-time to avoid evaluating before the TurboModule registry is ready. */
+function isAndroidTVAvailable(): boolean {
+  const viaRegistry = TurboModuleRegistry.get('AndroidTV') != null;
+  const viaLegacy = NativeModules.AndroidTV != null;
+  if (__DEV__) {
+    console.log('[AndroidTV] TurboModuleRegistry:', viaRegistry, '| NativeModules:', viaLegacy);
+  }
+  return viaRegistry || viaLegacy;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,7 +37,7 @@ interface Props {
   onCancel: () => void;
 }
 
-type Step = 'idle' | 'starting' | 'waiting_pin' | 'confirming' | 'done' | 'error';
+type Step = 'idle' | 'starting' | 'waiting_pin' | 'confirming' | 'done' | 'error' | 'unsupported';
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -53,6 +66,10 @@ export function AndroidTVPairingModal({
   }, [reset, onCancel]);
 
   const handleStartPairing = useCallback(async () => {
+    if (!isAndroidTVAvailable()) {
+      setStep('unsupported');
+      return;
+    }
     setStep('starting');
     setErrorMessage('');
     try {
@@ -92,6 +109,23 @@ export function AndroidTVPairingModal({
 
   const renderBody = () => {
     switch (step) {
+      case 'unsupported':
+        return (
+          <>
+            <View style={styles.iconWrap}>
+              <Ionicons name="phone-portrait-outline" size={48} color="#FFB347" />
+            </View>
+            <Text style={styles.title}>Not available</Text>
+            <Text style={styles.subtitle}>
+              Android TV pairing requires a physical device.{`\n`}
+              This feature is not available in the simulator or Expo Go.
+            </Text>
+            <TouchableOpacity style={styles.primaryBtn} onPress={handleCancel} activeOpacity={0.85}>
+              <Text style={styles.primaryBtnText}>Close</Text>
+            </TouchableOpacity>
+          </>
+        );
+
       case 'idle':
         return (
           <>

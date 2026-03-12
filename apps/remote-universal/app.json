@@ -21,7 +21,8 @@
     },
     "plugins": [
       "@remote/native-modules/plugin/withIRBlaster",
-      "@remote/native-modules/plugin/withAndroidTV"
+      "@remote/native-modules/plugin/withAndroidTV",
+      "@remote/native-modules/plugin/withAndroidTVIOS"
     ]
   }
 }

@@ -218,6 +218,9 @@ importers:
       '@remote/ui-kit':
         specifier: workspace:*
         version: link:../../packages/ui-kit
+      '@supabase/supabase-js':
+        specifier: ^2.38.0
+        version: 2.99.0
       '@tanstack/react-query':
         specifier: ^5.0.0
         version: 5.90.21(react@19.1.0)

@@ -15,7 +15,10 @@ import {
   Platform,
   Animated,
   ActivityIndicator,
+  Image,
 } from 'react-native';
+import { useAllBrands, useModelsByBrand } from '../hooks/useCatalog';
+import type { CatalogBrand, CatalogModel } from '../hooks/useCatalog';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -42,6 +45,7 @@ interface StoredDevice {
   ip_address?: string;
   is_online: boolean;
   created_at: number;
+  model_db_id?: string; // link to device_models.id in Supabase
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -153,8 +157,12 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
 interface WizardState {
   step: 1 | 2 | 3;
   category: DeviceCategory | null;
-  brand: string;
-  model: string;
+  brand: string;       // display name
+  brandSlug: string | null; // DB brands.id (slug) for model queries
+  brandSearch: string; // filter text in step 2
+  model: string;       // display name / free text
+  modelId: string | null;   // DB device_models.id when selected from list
+  modelSearch: string; // search text in step 3
   nickname: string;
   room: string;
   protocol: 'ir' | 'wifi' | 'ble';
@@ -162,7 +170,9 @@ interface WizardState {
 }
 
 const INITIAL_WIZARD: WizardState = {
-  step: 1, category: null, brand: '', model: '',
+  step: 1, category: null,
+  brand: '', brandSlug: null, brandSearch: '',
+  model: '', modelId: null, modelSearch: '',
   nickname: '', room: '', protocol: 'ir', ip_address: '',
 };
 
@@ -178,6 +188,10 @@ function AddDeviceModal({
   const [w, setW] = useState<WizardState>(INITIAL_WIZARD);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
+
+  // Catalog data — hooks are always called; queries are enabled conditionally
+  const { data: catalogBrands, isLoading: brandsLoading } = useAllBrands();
+  const { data: catalogModels, isLoading: modelsLoading } = useModelsByBrand(w.brandSlug);
 
   useEffect(() => {
     if (visible) {
@@ -203,6 +217,7 @@ function AddDeviceModal({
       ip_address: w.ip_address.trim() || undefined,
       is_online: false,
       created_at: Math.floor(Date.now() / 1000),
+      model_db_id: w.modelId ?? undefined,
     };
     onSave(device);
   };
@@ -213,112 +228,166 @@ function AddDeviceModal({
     }],
   };
 
-  // ── Step 1: Choose category ────────────────────────────────────────────────
-  const renderStep1 = () => (
-    <View style={styles.wizardBody}>
-      <Text style={styles.wizardStepTitle}>What type of device?</Text>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View style={styles.categoryGrid}>
-          {(Object.entries(CATEGORY_META) as [DeviceCategory, typeof CATEGORY_META[DeviceCategory]][]).map(([key, meta]) => (
-            <TouchableOpacity
-              key={key}
-              style={[styles.categoryTile, w.category === key && { borderColor: meta.color, backgroundColor: meta.color + '18' }]}
-              onPress={() => setW(prev => ({ ...prev, category: key }))}
-              activeOpacity={0.7}
-            >
-              <Ionicons name={meta.icon} size={28} color={w.category === key ? meta.color : '#8892A4'} style={{ marginBottom: 6 }} />
-              <Text style={[styles.categoryTileLabel, w.category === key && { color: meta.color }]}>
-                {meta.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
-      <TouchableOpacity
-        style={[styles.wizardPrimaryBtn, !w.category && styles.wizardBtnDisabled]}
-        onPress={() => w.category && goStep(2)}
-        activeOpacity={0.8}
-      >
-<Text style={styles.wizardPrimaryBtnText}>Next</Text>
-          <Ionicons name="arrow-forward" size={16} color="#FFFFFF" style={{ marginLeft: 4 }} />
-      </TouchableOpacity>
-    </View>
-  );
-
-  // ── Step 2: Choose brand ───────────────────────────────────────────────────
-  const renderStep2 = () => {
-    const brands = w.category ? POPULAR_BRANDS[w.category] : [];
+  // ── Step 1: Choose brand ───────────────────────────────────────────────────
+  const renderStep1 = () => {
+    const dbBrands: CatalogBrand[] = catalogBrands ?? [];
+    const selectBrand = (name: string, slug: string | null) =>
+      setW(prev => ({ ...prev, brand: name, brandSlug: slug, model: '', modelId: null, modelSearch: '' }));
+    const q = w.brandSearch.toLowerCase();
+    const filteredDbBrands = q ? dbBrands.filter(b => b.name.toLowerCase().includes(q)) : dbBrands;
+    const showOther = !q || 'other'.includes(q);
     return (
       <View style={styles.wizardBody}>
         <Text style={styles.wizardStepTitle}>Select brand</Text>
-        <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-          {brands.map(brand => (
-            <TouchableOpacity
-              key={brand}
-              style={[styles.brandRow, w.brand === brand && styles.brandRowSelected]}
-              onPress={() => setW(prev => ({ ...prev, brand }))}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.brandRowText, w.brand === brand && styles.brandRowTextSelected]}>
-                {brand}
-              </Text>
-              {w.brand === brand && <Ionicons name="checkmark" size={18} color="#6C63FF" />}
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-        <View style={styles.wizardFooterRow}>
-          <TouchableOpacity style={styles.wizardSecondaryBtn} onPress={() => goStep(1)} activeOpacity={0.8}>
-            <Ionicons name="arrow-back" size={16} color="#8892A4" style={{ marginRight: 4 }} />
-            <Text style={styles.wizardSecondaryBtnText}>Back</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.wizardPrimaryBtn, { flex: 1 }, !w.brand && styles.wizardBtnDisabled]}
-            onPress={() => w.brand && goStep(3)}
-            activeOpacity={0.8}
-          >
-<Text style={styles.wizardPrimaryBtnText}>Next</Text>
+        <TextInput
+          style={[styles.fieldInput, { marginBottom: 12 }]}
+          placeholder="Search brands…"
+          placeholderTextColor="#3A4257"
+          value={w.brandSearch}
+          onChangeText={t => setW(prev => ({ ...prev, brandSearch: t }))}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
+        {brandsLoading ? (
+          <View style={styles.brandsLoading}>
+            <ActivityIndicator color="#6C63FF" />
+            <Text style={styles.brandsLoadingText}>Loading brands…</Text>
+          </View>
+        ) : (
+          <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+            {filteredDbBrands.map(brand => (
+              <TouchableOpacity
+                key={brand.id}
+                style={[styles.brandRow, w.brand === brand.name && styles.brandRowSelected]}
+                onPress={() => selectBrand(brand.name, brand.slug)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.brandRowLeft}>
+                  {brand.logo_uri ? (
+                    <Image source={{ uri: brand.logo_uri }} style={styles.brandLogo} />
+                  ) : (
+                    <View style={styles.brandLogoFallback}>
+                      <Text style={styles.brandLogoFallbackText}>{brand.name.charAt(0)}</Text>
+                    </View>
+                  )}
+                  <Text style={[styles.brandRowText, w.brand === brand.name && styles.brandRowTextSelected]}>
+                    {brand.name}
+                  </Text>
+                </View>
+                {w.brand === brand.name && <Ionicons name="checkmark" size={18} color="#6C63FF" />}
+              </TouchableOpacity>
+            ))}
+            {showOther && (
+              <TouchableOpacity
+                style={[styles.brandRow, w.brand === 'Other' && styles.brandRowSelected]}
+                onPress={() => selectBrand('Other', null)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.brandRowLeft}>
+                  <View style={styles.brandLogoFallback}>
+                    <Ionicons name="ellipsis-horizontal" size={14} color="#8892A4" />
+                  </View>
+                  <Text style={[styles.brandRowText, w.brand === 'Other' && styles.brandRowTextSelected]}>
+                    Other
+                  </Text>
+                </View>
+                {w.brand === 'Other' && <Ionicons name="checkmark" size={18} color="#6C63FF" />}
+              </TouchableOpacity>
+            )}
+            {q.length > 0 && filteredDbBrands.length === 0 && !showOther && (
+              <Text style={styles.brandsEmptyText}>No brands match "{w.brandSearch}"</Text>
+            )}
+          </ScrollView>
+        )}
+        <TouchableOpacity
+          style={[styles.wizardPrimaryBtn, !w.brand && styles.wizardBtnDisabled]}
+          onPress={() => w.brand && goStep(2)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.wizardPrimaryBtnText}>Next</Text>
           <Ionicons name="arrow-forward" size={16} color="#FFFFFF" style={{ marginLeft: 4 }} />
-          </TouchableOpacity>
-        </View>
+        </TouchableOpacity>
       </View>
     );
   };
 
-  // ── Step 3: Device details ─────────────────────────────────────────────────
-  const renderStep3 = () => {
-    const canSave = w.model.trim().length > 0;
+  // ── Step 2: Model details ──────────────────────────────────────────────────
+  const renderStep2 = () => {
+    const canNext = w.model.trim().length > 0;
+    const hasDbModels = (catalogModels ?? []).length > 0;
+    const visibleModels: CatalogModel[] = hasDbModels
+      ? (catalogModels ?? []).filter(m => {
+          const q = w.modelSearch.toLowerCase();
+          if (!q) return true;
+          return (
+            m.model_number.toLowerCase().includes(q) ||
+            (m.model_name?.toLowerCase().includes(q) ?? false)
+          );
+        })
+      : [];
+    const selectModel = (m: CatalogModel) => {
+      const proto = (m.protocols[0] ?? 'ir') as 'ir' | 'wifi' | 'ble';
+      const cat = m.category as DeviceCategory | null;
+      setW(p => ({
+        ...p,
+        model: m.model_number, modelId: m.id, modelSearch: m.model_number, protocol: proto,
+        ...(cat ? { category: cat } : {}),
+      }));
+    };
     return (
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.wizardBody}>
         <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <Text style={styles.wizardStepTitle}>Device details</Text>
-
-          <Text style={styles.fieldLabel}>Model / Name *</Text>
+          {(hasDbModels || modelsLoading) && (
+            <>
+              <Text style={styles.fieldLabel}>Search Model</Text>
+              {modelsLoading ? (
+                <View style={styles.brandsLoading}>
+                  <ActivityIndicator color="#6C63FF" size="small" />
+                </View>
+              ) : (
+                <>
+                  <TextInput
+                    style={styles.fieldInput}
+                    placeholder="Search model number or name…"
+                    placeholderTextColor="#3A4257"
+                    value={w.modelSearch}
+                    onChangeText={t => setW(p => ({ ...p, modelSearch: t, model: t, modelId: null }))}
+                  />
+                  {visibleModels.length > 0 && (
+                    <View style={styles.modelList}>
+                      {visibleModels.slice(0, 8).map(m => (
+                        <TouchableOpacity
+                          key={m.id}
+                          style={[styles.modelItem, w.modelId === m.id && styles.modelItemSelected]}
+                          onPress={() => selectModel(m)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.modelItemNumber, w.modelId === m.id && { color: '#FFFFFF' }]}>
+                              {m.model_number}
+                            </Text>
+                            {m.model_name ? (
+                              <Text style={styles.modelItemName} numberOfLines={1}>{m.model_name}</Text>
+                            ) : null}
+                          </View>
+                          {w.modelId === m.id && <Ionicons name="checkmark-circle" size={18} color="#6C63FF" />}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </>
+              )}
+            </>
+          )}
+          <Text style={styles.fieldLabel}>{hasDbModels ? 'Or Enter Manually *' : 'Model / Name *'}</Text>
           <TextInput
             style={styles.fieldInput}
             placeholder="e.g. QLED QN85B, Emura III"
             placeholderTextColor="#3A4257"
             value={w.model}
-            onChangeText={t => setW(p => ({ ...p, model: t }))}
+            onChangeText={t => setW(p => ({ ...p, model: t, modelId: null }))}
           />
-
-          <Text style={styles.fieldLabel}>Nickname (optional)</Text>
-          <TextInput
-            style={styles.fieldInput}
-            placeholder="e.g. Living Room TV"
-            placeholderTextColor="#3A4257"
-            value={w.nickname}
-            onChangeText={t => setW(p => ({ ...p, nickname: t }))}
-          />
-
-          <Text style={styles.fieldLabel}>Room</Text>
-          <TextInput
-            style={styles.fieldInput}
-            placeholder="e.g. Living Room, Bedroom"
-            placeholderTextColor="#3A4257"
-            value={w.room}
-            onChangeText={t => setW(p => ({ ...p, room: t }))}
-          />
-
           <Text style={styles.fieldLabel}>Connection protocol</Text>
           <View style={styles.protocolRow}>
             {(Object.entries(PROTOCOL_META) as ['ir' | 'wifi' | 'ble', typeof PROTOCOL_META['ir']][]).map(([key, meta]) => (
@@ -335,7 +404,6 @@ function AddDeviceModal({
               </TouchableOpacity>
             ))}
           </View>
-
           {w.protocol === 'wifi' && (
             <>
               <Text style={styles.fieldLabel}>IP Address (optional)</Text>
@@ -351,12 +419,69 @@ function AddDeviceModal({
           )}
           <View style={{ height: 20 }} />
         </ScrollView>
+        <View style={styles.wizardFooterRow}>
+          <TouchableOpacity style={styles.wizardSecondaryBtn} onPress={() => goStep(1)} activeOpacity={0.8}>
+            <Ionicons name="arrow-back" size={16} color="#8892A4" style={{ marginRight: 4 }} />
+            <Text style={styles.wizardSecondaryBtnText}>Back</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.wizardPrimaryBtn, { flex: 1 }, !canNext && styles.wizardBtnDisabled]}
+            onPress={() => canNext && goStep(3)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.wizardPrimaryBtnText}>Next</Text>
+            <Ionicons name="arrow-forward" size={16} color="#FFFFFF" style={{ marginLeft: 4 }} />
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    );
+  };
 
+  // ── Step 3: Category & finish ──────────────────────────────────────────────
+  const renderStep3 = () => {
+    const canSave = w.category !== null && w.model.trim().length > 0;
+    return (
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.wizardBody}>
+        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <Text style={styles.wizardStepTitle}>What type of device?</Text>
+          <View style={styles.categoryGrid}>
+            {(Object.entries(CATEGORY_META) as [DeviceCategory, typeof CATEGORY_META[DeviceCategory]][]).map(([key, meta]) => (
+              <TouchableOpacity
+                key={key}
+                style={[styles.categoryTile, w.category === key && { borderColor: meta.color, backgroundColor: meta.color + '18' }]}
+                onPress={() => setW(prev => ({ ...prev, category: key }))}
+                activeOpacity={0.7}
+              >
+                <Ionicons name={meta.icon} size={28} color={w.category === key ? meta.color : '#8892A4'} style={{ marginBottom: 6 }} />
+                <Text style={[styles.categoryTileLabel, w.category === key && { color: meta.color }]}>
+                  {meta.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.fieldLabel}>Nickname (optional)</Text>
+          <TextInput
+            style={styles.fieldInput}
+            placeholder="e.g. Living Room TV"
+            placeholderTextColor="#3A4257"
+            value={w.nickname}
+            onChangeText={t => setW(p => ({ ...p, nickname: t }))}
+          />
+          <Text style={styles.fieldLabel}>Room</Text>
+          <TextInput
+            style={styles.fieldInput}
+            placeholder="e.g. Living Room, Bedroom"
+            placeholderTextColor="#3A4257"
+            value={w.room}
+            onChangeText={t => setW(p => ({ ...p, room: t }))}
+          />
+          <View style={{ height: 20 }} />
+        </ScrollView>
         <View style={styles.wizardFooterRow}>
           <TouchableOpacity style={styles.wizardSecondaryBtn} onPress={() => goStep(2)} activeOpacity={0.8}>
-          <Ionicons name="arrow-back" size={16} color="#8892A4" style={{ marginRight: 4 }} />
-          <Text style={styles.wizardSecondaryBtnText}>Back</Text>
-        </TouchableOpacity>
+            <Ionicons name="arrow-back" size={16} color="#8892A4" style={{ marginRight: 4 }} />
+            <Text style={styles.wizardSecondaryBtnText}>Back</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.wizardPrimaryBtn, { flex: 1 }, !canSave && styles.wizardBtnDisabled]}
             onPress={canSave ? handleSave : undefined}
@@ -864,5 +989,79 @@ const styles = StyleSheet.create({
   },
   wizardBtnDisabled: {
     opacity: 0.35,
+  },
+  // Brand logo in step 2
+  brandRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  brandLogo: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#1E2535',
+  },
+  brandLogoFallback: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#1E2535',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandLogoFallbackText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#8892A4',
+  },
+  brandsLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  brandsLoadingText: {
+    color: '#8892A4',
+    fontSize: 13,
+  },
+  brandsEmptyText: {
+    fontSize: 13,
+    color: '#4A5568',
+    textAlign: 'center',
+    marginTop: 24,
+  },
+  // Model search in step 3
+  modelList: {
+    marginTop: 6,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#1E2535',
+    marginBottom: 4,
+  },
+  modelItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: '#141928',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E2535',
+  },
+  modelItemSelected: {
+    backgroundColor: '#6C63FF18',
+  },
+  modelItemNumber: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8892A4',
+  },
+  modelItemName: {
+    fontSize: 11,
+    color: '#4A5568',
+    marginTop: 1,
   },
 });

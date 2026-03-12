@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,12 +7,16 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  TextInput,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 import { usePro } from '../hooks/usePro';
 import { Ionicons } from '@expo/vector-icons';
+import { getApiBaseUrl, setApiBaseUrl } from '../lib/apiUrl';
+import { appConfig } from '../config';
 
 interface SettingRow {
   id: string;
@@ -43,6 +47,32 @@ export function SettingsScreen(): React.ReactElement {
     haptics: true,
     autoConnect: false,
   });
+
+  // Backend URL config
+  const [backendUrl, setBackendUrl] = useState(appConfig.apiBaseUrl);
+  const [backendUrlDirty, setBackendUrlDirty] = useState(false);
+
+  useEffect(() => {
+    void getApiBaseUrl().then(url => setBackendUrl(url));
+  }, []);
+
+  const saveBackendUrl = async () => {
+    const trimmed = backendUrl.trim();
+    if (!trimmed) return;
+    if (!/^https?:\/\/.+/.test(trimmed)) {
+      Alert.alert('Invalid URL', 'URL must start with http:// or https://');
+      return;
+    }
+    await setApiBaseUrl(trimmed);
+    setBackendUrlDirty(false);
+    Alert.alert('Saved', 'Backend URL updated. Reopen any remote screens to apply.');
+  };
+
+  const resetBackendUrl = async () => {
+    await setApiBaseUrl(null);
+    setBackendUrl(appConfig.apiBaseUrl);
+    setBackendUrlDirty(false);
+  };
 
   const toggle = (id: string) => {
     setSettings(prev => ({ ...prev, [id]: !prev[id] }));
@@ -134,6 +164,42 @@ export function SettingsScreen(): React.ReactElement {
             <Ionicons name="chevron-forward" size={18} color="#4A5568" />
           </TouchableOpacity>
         ))}
+      </View>
+
+      {/* Developer / Network */}
+      <Text style={styles.sectionLabel}>DEVELOPER</Text>
+      <View style={styles.section}>
+        <View style={styles.row}>
+          <View style={styles.rowText}>
+            <Text style={styles.rowLabel}>Backend URL</Text>
+            <Text style={styles.rowDesc}>Server IP for real-device testing</Text>
+          </View>
+        </View>
+        <View style={styles.urlRowInput}>
+          <TextInput
+            style={styles.urlInput}
+            value={backendUrl}
+            onChangeText={text => { setBackendUrl(text); setBackendUrlDirty(true); }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            placeholder="http://192.168.1.X:3000"
+            placeholderTextColor="#4A5568"
+          />
+          <TouchableOpacity
+            style={[styles.urlSaveBtn, !backendUrlDirty && styles.urlSaveBtnDisabled]}
+            onPress={saveBackendUrl}
+            disabled={!backendUrlDirty}
+          >
+            <Text style={styles.urlSaveBtnText}>Save</Text>
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity style={[styles.row, styles.urlResetRow]} onPress={resetBackendUrl} activeOpacity={0.7}>
+          <View style={styles.rowText}>
+            <Text style={[styles.rowLabel, { color: '#8892A4' }]}>Reset to default</Text>
+          </View>
+          <Ionicons name="refresh" size={16} color="#4A5568" />
+        </TouchableOpacity>
       </View>
 
       <TouchableOpacity style={styles.signOutBtn} activeOpacity={0.8}>
@@ -304,5 +370,42 @@ const styles = StyleSheet.create({
     color: '#FF4444',
     fontSize: 16,
     fontWeight: '600',
+  },
+  urlRowInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    gap: 8,
+  },
+  urlInput: {
+    flex: 1,
+    backgroundColor: '#0A0E1A',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#2A3147',
+    color: '#FFFFFF',
+    fontSize: 13,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontFamily: 'monospace',
+  },
+  urlSaveBtn: {
+    backgroundColor: '#6C63FF',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  urlSaveBtnDisabled: {
+    backgroundColor: '#2A3147',
+  },
+  urlSaveBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  urlResetRow: {
+    borderTopWidth: 1,
+    borderTopColor: '#2A3147',
   },
 });

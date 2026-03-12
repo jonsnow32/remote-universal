@@ -1,9 +1,13 @@
 import Fastify from 'fastify';
+import cors from '@fastify/cors';
 import { devicesRouter } from './routes/devices';
 import { commandsRouter } from './routes/commands';
 import { tenantRouter } from './routes/tenant';
 
 const server = Fastify({ logger: true });
+
+// Allow requests from any origin (React Native / Expo dev builds).
+void server.register(cors, { origin: true });
 
 void server.register(devicesRouter, { prefix: '/api/devices' });
 void server.register(commandsRouter, { prefix: '/api/commands' });

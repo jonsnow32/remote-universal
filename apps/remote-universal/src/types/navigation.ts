@@ -1,6 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { CompositeScreenProps } from '@react-navigation/native';
+import type { DeviceType } from '@remote/core';
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -24,6 +25,18 @@ export type HomeStackParamList = {
   ACControl: { deviceId: string; deviceName: string; location: string };
 };
 
+export type DevicesStackParamList = {
+  DevicesList: undefined;
+  DeviceRemote: {
+    deviceId: string;
+    deviceName: string;
+    address: string;
+    deviceType: DeviceType;
+    /** Brand-specific layout id. Falls back to universal when undefined. */
+    layoutId?: string;
+  };
+};
+
 export type MacroStackParamList = {
   MacroList: undefined;
   MacroEditor: { macroId?: string; macroName?: string };
@@ -45,6 +58,10 @@ export type SettingsTabProps = BottomTabScreenProps<MainTabParamList, 'Settings'
 export type HomeMainProps = NativeStackScreenProps<HomeStackParamList, 'HomeMain'>;
 export type TVRemoteScreenProps = NativeStackScreenProps<HomeStackParamList, 'TVRemote'>;
 export type ACControlScreenProps = NativeStackScreenProps<HomeStackParamList, 'ACControl'>;
+
+// Devices stack screen props
+export type DevicesListProps = NativeStackScreenProps<DevicesStackParamList, 'DevicesList'>;
+export type DeviceRemoteProps = NativeStackScreenProps<DevicesStackParamList, 'DeviceRemote'>;
 
 // Macro stack screen props
 export type MacroListProps = NativeStackScreenProps<MacroStackParamList, 'MacroList'>;

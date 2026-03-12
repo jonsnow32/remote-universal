@@ -60,7 +60,7 @@ export { MatterProtocol } from './protocols/MatterProtocol';
 
 // Discovery
 export { DeviceDiscovery } from './discovery/DeviceDiscovery';
-export type { DiscoveredDevice } from './discovery/DeviceDiscovery';
+export type { DiscoveredDevice, DeviceType } from './discovery/DeviceDiscovery';
 export { MDNSDiscovery } from './discovery/MDNSDiscovery';
 export { SSDPDiscovery } from './discovery/SSDPDiscovery';
 export { BLEDiscovery } from './discovery/BLEDiscovery';

@@ -1,4 +1,4 @@
-import { DiscoveredDevice } from './DeviceDiscovery';
+import { DiscoveredDevice, DeviceType } from './DeviceDiscovery';
 
 interface ZCService {
   name: string;
@@ -20,11 +20,13 @@ interface ZCInstance {
  * Service types to scan for. Each type maps to a common smart-device category.
  * react-native-zeroconf scan() takes the simple name (no leading underscore, no ._tcp.local.).
  */
-const SCAN_SERVICES: Array<{ type: string; protocol: string }> = [
-  { type: 'googlecast', protocol: 'tcp' },   // Chromecast / Google TV
-  { type: 'airplay', protocol: 'tcp' },       // Apple TV / AirPlay
-  { type: 'amzn-wplay', protocol: 'tcp' },   // Amazon Fire TV
-  { type: 'smarttv-rest', protocol: 'tcp' },  // Tizen / Samsung smart TVs
+const SCAN_SERVICES: Array<{ type: string; protocol: string; deviceType: DeviceType }> = [
+  { type: 'googlecast',        protocol: 'tcp', deviceType: 'tv' },  // Chromecast / Google TV
+  { type: 'airplay',           protocol: 'tcp', deviceType: 'tv' },  // Apple TV / AirPlay
+  { type: 'amzn-wplay',       protocol: 'tcp', deviceType: 'stb' }, // Amazon Fire TV
+  { type: 'smarttv-rest',     protocol: 'tcp', deviceType: 'tv' },  // Tizen / Samsung smart TVs
+  { type: 'androidtvremote2', protocol: 'tcp', deviceType: 'stb' }, // Android TV (NVIDIA Shield, etc.) v2
+  { type: 'androidtvremote',  protocol: 'tcp', deviceType: 'stb' }, // Android TV (legacy)
 ];
 
 /**
@@ -36,23 +38,25 @@ const SCAN_SERVICES: Array<{ type: string; protocol: string }> = [
  */
 export class MDNSDiscovery {
   async discover(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
-    const scanPromises = SCAN_SERVICES.map(({ type, protocol }) =>
-      this.scanServiceType(type, protocol, timeoutMs)
-    );
-
-    const settled = await Promise.allSettled(scanPromises);
     const all: DiscoveredDevice[] = [];
     const seen = new Set<string>();
 
-    for (const result of settled) {
-      if (result.status === 'fulfilled') {
-        for (const device of result.value) {
+    // Run service type scans sequentially. Android's NsdManager has a limited
+    // number of concurrent discovery listeners; running them all in parallel
+    // causes silent failures. Each scan is given a short individual window so
+    // the total stays within the caller's timeoutMs budget.
+    const perTypeBudget = Math.floor(timeoutMs / SCAN_SERVICES.length);
+
+    for (const { type, protocol, deviceType } of SCAN_SERVICES) {
+      try {
+        const devices = await this.scanServiceType(type, protocol, deviceType, perTypeBudget);
+        for (const device of devices) {
           if (!seen.has(device.id)) {
             seen.add(device.id);
             all.push(device);
           }
         }
-      }
+      } catch { /* per-type failures are non-fatal */ }
     }
 
     return all;
@@ -61,6 +65,7 @@ export class MDNSDiscovery {
   private scanServiceType(
     serviceType: string,
     protocol: string,
+    deviceType: DeviceType,
     timeoutMs: number
   ): Promise<DiscoveredDevice[]> {
     return new Promise<DiscoveredDevice[]>((resolve) => {
@@ -93,6 +98,7 @@ export class MDNSDiscovery {
               address,
               name: service.txt?.fn ?? service.fullName ?? service.name,
               source: 'mdns',
+              type: deviceType,
             });
           }
         });

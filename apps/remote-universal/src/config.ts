@@ -2,6 +2,11 @@ export interface AppConfig {
   brandId: string;
   appName: string;
   bundleId: string;
+  /**
+   * Backend API base URL. Change to your Mac's LAN IP when testing on a real device,
+   * e.g. http://192.168.1.10:3000
+   */
+  apiBaseUrl: string;
   features: {
     irControl: boolean;
     smartThingsIntegration: boolean;
@@ -19,6 +24,9 @@ export const appConfig: AppConfig = {
   brandId: 'universal',
   appName: 'Universal Remote',
   bundleId: 'com.remoteplatform.universal',
+  // Set EXPO_PUBLIC_API_BASE_URL in .env to your Mac's LAN IP when testing on a real device.
+  // Example: EXPO_PUBLIC_API_BASE_URL=http://192.168.1.10:3000
+  apiBaseUrl: (process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3000').replace(/\/$/, ''),
   features: {
     irControl: true,
     smartThingsIntegration: true,

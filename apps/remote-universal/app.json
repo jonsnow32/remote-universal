@@ -7,11 +7,21 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.remoteplatform.universal"
+      "bundleIdentifier": "com.remoteplatform.universal",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSAllowsLocalNetworking": true
+        }
+      }
     },
     "android": {
-      "package": "com.remoteplatform.universal"
+      "package": "com.remoteplatform.universal",
+      "usesCleartextTraffic": true
     },
-    "plugins": ["@remote/native-modules/plugin/withIRBlaster"]
+    "plugins": [
+      "@remote/native-modules/plugin/withIRBlaster",
+      "@remote/native-modules/plugin/withAndroidTV"
+    ]
   }
 }

@@ -13,6 +13,16 @@ interface SamsungDeviceInfo {
 }
 
 /**
+ * Google Cast device info returned by http://<ip>:8008/setup/eureka_info
+ * Supported by: Chromecast, NVIDIA Shield TV, Mi Box, Android TV, Google TV.
+ */
+interface CastDeviceInfo {
+  name?: string;
+  model_name?: string;
+  manufacturer?: string;
+}
+
+/**
  * Discovers devices via SSDP (UPnP), e.g., Samsung SmartTV, DLNA.
  *
  * True SSDP requires sending an M-SEARCH UDP multicast to 239.255.255.255:1900,
@@ -37,15 +47,27 @@ export class SSDPDiscovery {
 
   async discover(): Promise<DiscoveredDevice[]> {
     const candidates = this.buildCandidates();
-    const probes = candidates.map(ip => this.probeSamsungTV(ip));
+    // Probe each IP for both Samsung TV (port 8001) and Cast devices (port 8008) simultaneously.
+    const probes = candidates.flatMap(ip => [
+      this.probeSamsungTV(ip),
+      this.probeCastDevice(ip),
+    ]);
     const settled = await Promise.allSettled(probes);
 
-    return settled
+    const results = settled
       .filter(
         (r): r is PromiseFulfilledResult<DiscoveredDevice | null> =>
           r.status === 'fulfilled' && r.value !== null
       )
       .map(r => r.value as DiscoveredDevice);
+
+    // Deduplicate by id (a device might respond on both ports).
+    const seen = new Set<string>();
+    return results.filter(d => {
+      if (seen.has(d.id)) return false;
+      seen.add(d.id);
+      return true;
+    });
   }
 
   private buildCandidates(): string[] {
@@ -81,6 +103,45 @@ export class SSDPDiscovery {
         address: ip,
         name: device?.name ?? device?.modelName ?? 'Samsung TV',
         source: 'ssdp',
+        type: 'tv' as const,
+      };
+    } catch {
+      clearTimeout(timeoutId);
+      return null;
+    }
+  }
+
+  /**
+   * Probes a Google Cast device at http://<ip>:8008/setup/eureka_info.
+   * Responds on: NVIDIA Shield TV, Chromecast, Mi Box, Android TV, Google TV.
+   */
+  private async probeCastDevice(ip: string): Promise<DiscoveredDevice | null> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      SSDPDiscovery.PROBE_TIMEOUT_MS
+    );
+
+    try {
+      const response = await fetch(`http://${ip}:8008/setup/eureka_info`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) return null;
+
+      const data = (await response.json()) as CastDeviceInfo;
+      const name = data.name ?? data.model_name ?? 'Cast Device';
+      // Infer device type: STB for Android TV / Shield, TV for plain Chromecast.
+      const modelLower = (data.model_name ?? '').toLowerCase();
+      const isChromecastDongle =
+        modelLower.includes('chromecast') && !modelLower.includes('google tv');
+      return {
+        id: `ssdp-cast-${ip}`,
+        address: ip,
+        name,
+        source: 'ssdp',
+        type: isChromecastDongle ? 'tv' : 'stb',
       };
     } catch {
       clearTimeout(timeoutId);

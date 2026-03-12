@@ -3,6 +3,7 @@ export { SamsungFrame } from './devices/tv/Frame';
 export { SamsungWindFree } from './devices/ac/WindFree';
 export { SamsungIR } from './protocols/SamsungIR';
 export { SamsungSmartThings } from './protocols/SamsungSmartThings';
+export { SamsungTizen, SAMSUNG_KEY_MAP, SAMSUNG_UNAUTHORIZED } from './protocols/SamsungTizen';
 export { samsungTVLayout } from './layouts/tv-layout';
 
 /** All Samsung device definitions */

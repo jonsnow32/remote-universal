@@ -3,11 +3,15 @@ import { SSDPDiscovery } from './SSDPDiscovery';
 import { BLEDiscovery } from './BLEDiscovery';
 import { HubDiscovery } from './HubDiscovery';
 
+export type DeviceType = 'tv' | 'ac' | 'speaker' | 'soundbar' | 'projector' | 'fan' | 'light' | 'stb';
+
 export interface DiscoveredDevice {
   id: string;
   address: string;
   name?: string;
   source: 'mdns' | 'ssdp' | 'ble' | 'hub';
+  /** Device category inferred at discovery time from protocol metadata. */
+  type?: DeviceType;
 }
 
 /** Default scan window in milliseconds. */

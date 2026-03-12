@@ -9,10 +9,26 @@ import {
   ScrollView,
   StatusBar,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { DeviceDiscovery } from '@remote/core';
 import type { DiscoveredDevice } from '@remote/core';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { DevicesStackParamList } from '../types/navigation';
 
 const discovery = new DeviceDiscovery();
+
+/** Infer a brand-specific layout id from the discovered device's id/name.
+ *  Returns undefined when no brand match → RemoteScreen will use universal fallback. */
+function inferLayoutId(device: DiscoveredDevice): string | undefined {
+  const id = device.id.toLowerCase();
+  const name = (device.name ?? '').toLowerCase();
+  if (id.includes('samsung') || id.includes('smarttv-rest') || name.includes('samsung')) return 'samsung-tv';
+  if (id.includes('lg') || name.includes('lg oled') || name.includes('lg tv')) return 'lg-tv';
+  if (id.includes('daikin') || name.includes('daikin')) return 'daikin-ac';
+  // Android TV devices (NVIDIA Shield, Mi Box, etc.)
+  if (id.includes('androidtvremote') || id.includes('ssdp-cast') || name.includes('shield') || name.includes('android tv') || name.includes('mi box') || name.includes('chromecast with google tv')) return 'universal-stb';
+  return undefined;
+}
 
 const PROTOCOLS = [
   { id: 'mdns', label: 'mDNS', angle: -45 },
@@ -38,6 +54,7 @@ interface LogEntry {
 }
 
 export function DiscoveryScreen(): React.ReactElement {
+  const navigation = useNavigation<NativeStackNavigationProp<DevicesStackParamList>>();
   const [scanning, setScanning] = useState(false);
   const [devices, setDevices] = useState<DiscoveredDevice[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -90,8 +107,8 @@ export function DiscoveryScreen(): React.ReactElement {
     startRingAnimation();
 
     addLog('Starting discovery on all channels...', '#FFFFFF');
-    addLog('↳ mDNS  — googlecast · airplay · amzn-wplay · smarttv-rest', SOURCE_COLOR.mdns);
-    addLog('↳ SSDP  — Samsung Tizen :8001 probe (120 hosts)', SOURCE_COLOR.ssdp);
+    addLog('↳ mDNS  — googlecast · airplay · amzn-wplay · smarttv-rest · androidtvremote2', SOURCE_COLOR.mdns);
+    addLog('↳ SSDP  — Samsung Tizen :8001 · Cast :8008 (Shield/Chromecast/MiBox)', SOURCE_COLOR.ssdp);
     addLog('↳ BLE   — scanning for nearby BLE devices', SOURCE_COLOR.ble);
     addLog('↳ Hub   — fetching from cloud registry', SOURCE_COLOR.hub);
 
@@ -117,6 +134,16 @@ export function DiscoveryScreen(): React.ReactElement {
       setScanning(false);
       stopRingAnimation();
     }
+  };
+
+  const handleDevicePress = (device: DiscoveredDevice) => {
+    navigation.navigate('DeviceRemote', {
+      deviceId: device.id,
+      deviceName: device.name ?? device.id,
+      address: device.address,
+      deviceType: device.type ?? 'tv',
+      layoutId: inferLayoutId(device),
+    });
   };
 
   const ringStyle = (anim: Animated.Value) => ({
@@ -168,6 +195,29 @@ export function DiscoveryScreen(): React.ReactElement {
         <Text style={styles.found}>Searching for devices...</Text>
       )}
 
+      {devices.length > 0 && (
+        <FlatList
+          data={devices}
+          keyExtractor={item => item.id}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.deviceRow}
+              onPress={() => handleDevicePress(item)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.deviceDot, { backgroundColor: SOURCE_COLOR[item.source] ?? '#00C9A7' }]} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.deviceName}>{item.name ?? item.id}</Text>
+                <Text style={styles.deviceSource}>{item.source} · {item.address}</Text>
+              </View>
+              <View style={styles.deviceChevron} />
+            </TouchableOpacity>
+          )}
+          contentContainerStyle={styles.deviceList}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
+
       {/* Console */}
       <View style={styles.console}>
         <View style={styles.consoleHeader}>
@@ -193,26 +243,6 @@ export function DiscoveryScreen(): React.ReactElement {
           )}
         </ScrollView>
       </View>
-
-
-      {devices.length > 0 && (
-        <FlatList
-          data={devices}
-          keyExtractor={item => item.id}
-          renderItem={({ item }) => (
-            <View style={styles.deviceRow}>
-              <View style={[styles.deviceDot, { backgroundColor: SOURCE_COLOR[item.source] ?? '#00C9A7' }]} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.deviceName}>{item.name ?? item.id}</Text>
-                <Text style={styles.deviceSource}>{item.source} · {item.address}</Text>
-              </View>
-              <View style={styles.deviceOnline} />
-            </View>
-          )}
-          contentContainerStyle={styles.deviceList}
-          showsVerticalScrollIndicator={false}
-        />
-      )}
     </View>
   );
 }
@@ -318,11 +348,14 @@ const styles = StyleSheet.create({
     color: '#8892A4',
     marginTop: 2,
   },
-  deviceOnline: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#00C896',
+  deviceChevron: {
+    width: 7,
+    height: 7,
+    borderTopWidth: 2,
+    borderRightWidth: 2,
+    borderColor: '#8892A4',
+    transform: [{ rotate: '45deg' }],
+    marginRight: 4,
   },
   // Console
   console: {

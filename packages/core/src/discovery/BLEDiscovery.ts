@@ -8,7 +8,7 @@ export class BLEDiscovery {
     try {
       const { BLEModule } = await import('@remote/native-modules');
       const deviceIds = await BLEModule.scanForDevices();
-      return deviceIds.map(id => ({ id, address: id, source: 'ble' as const }));
+      return deviceIds.map(id => ({ id, address: id, source: 'ble' as const, type: undefined }));
     } catch {
       return [];
     }

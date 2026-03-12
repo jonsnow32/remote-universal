@@ -4,6 +4,10 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "plugin": "./plugin/withIRBlaster.js",
+  "plugins": {
+    "withIRBlaster": "./plugin/withIRBlaster.js",
+    "withAndroidTV": "./plugin/withAndroidTV.js"
+  },
   "scripts": {
     "build": "tsc --project tsconfig.json",
     "lint": "eslint src --ext .ts,.tsx",

@@ -1,69 +1,187 @@
-import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
-import { useTheme, RemoteLayout } from '@remote/ui-kit';
-import { CommandDispatcher, DeviceRegistry } from '@remote/core';
-import { SamsungQLED } from '@remote/device-sdk';
-import { create } from 'zustand';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, View, Text, TouchableOpacity, StyleSheet, StatusBar, Alert } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { RemoteLayout } from '@remote/ui-kit';
+import { findLayout, SamsungTizen, SAMSUNG_UNAUTHORIZED, AndroidTV, ANDROID_TV_NOT_PAIRED } from '@remote/device-sdk';
+import type { DeviceType, LayoutSection, LayoutButton } from '@remote/core';
+import type { DeviceRemoteProps } from '../types/navigation';
+import type { RemoteLayoutSection } from '@remote/ui-kit';
+import { appConfig } from '../config';
+import { getApiBaseUrl } from '../lib/apiUrl';
+import { AndroidTVPairingModal } from '../components/AndroidTVPairingModal';
 
-interface DeviceStore {
-  selectedDeviceId: string | null;
-  setSelectedDevice: (id: string | null) => void;
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Map DeviceType → universal layout id from device-sdk */
+const DEVICE_TYPE_TO_LAYOUT: Record<DeviceType, string> = {
+  tv:        'universal-tv',
+  ac:        'universal-ac',
+  speaker:   'universal-speaker',
+  soundbar:  'universal-soundbar',
+  projector: 'universal-projector',
+  fan:       'universal-fan',
+  light:     'universal-light',
+  stb:       'universal-stb',
+};
+
+/** Convert device-sdk LayoutSection[] → ui-kit RemoteLayoutSection[] */
+function toRemoteLayoutSections(layoutId: string | undefined, fallbackId: string): RemoteLayoutSection[] {
+  const layout = findLayout(layoutId, fallbackId);
+  if (!layout) return [];
+  return layout.sections.map((section: LayoutSection) => ({
+    id: section.id,
+    title: section.title,
+    buttons: section.buttons.map((btn: LayoutButton) => ({
+      id: btn.id,
+      label: btn.label,
+      icon: btn.icon
+        ? <Ionicons name={btn.icon as React.ComponentProps<typeof Ionicons>['name']} size={18} color="#FFFFFF" />
+        : undefined,
+      action: btn.action,
+      // ui-kit RemoteLayoutButton only supports 'primary' | 'ghost'; map 'danger' → 'ghost'
+      variant: btn.variant === 'danger' ? 'ghost' : btn.variant,
+      size: btn.size,
+    })),
+  }));
 }
 
-const useDeviceStore = create<DeviceStore>(set => ({
-  selectedDeviceId: 'samsung-qled-qn85b',
-  setSelectedDevice: (id: string | null) => set({ selectedDeviceId: id }),
-}));
+interface Toast { message: string; ok: boolean }
 
-const registry = new DeviceRegistry();
-registry.register(SamsungQLED);
-const dispatcher = new CommandDispatcher(registry);
+export function RemoteScreen({ route }: DeviceRemoteProps): React.ReactElement {
+  const navigation = useNavigation();
+  const { deviceName, deviceType, address, layoutId } = route.params;
 
-export function RemoteScreen(): React.ReactElement {
-  const theme = useTheme();
-  const { selectedDeviceId } = useDeviceStore();
+  const universalFallback = DEVICE_TYPE_TO_LAYOUT[deviceType] ?? 'universal-tv';
+  const sections = toRemoteLayoutSections(layoutId, universalFallback);
 
-  const selectedDevice = selectedDeviceId ? registry.getDevice(selectedDeviceId) : undefined;
+  const [toast, setToast] = useState<Toast | null>(null);
+  const toastAnim = useRef(new Animated.Value(0)).current;
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleButtonPress = useCallback(
-    (action: string) => {
-      if (!selectedDeviceId) return;
-      dispatcher.dispatch(selectedDeviceId, action).catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : String(err);
-        Alert.alert('Command Error', message);
-      });
-    },
-    [selectedDeviceId]
-  );
+  // Resolved backend URL (AsyncStorage override > env var > hardcoded default)
+  const [apiBaseUrl, setApiBaseUrlState] = useState(appConfig.apiBaseUrl);
 
-  if (!selectedDevice) {
-    return (
-      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <Text style={{ color: theme.colors.textSecondary }}>No device selected.</Text>
-      </View>
-    );
-  }
+  // Android TV pairing state
+  const isAndroidTV = layoutId === 'universal-stb';
+  const [showPairingModal, setShowPairingModal] = useState(false);
+  const pendingActionRef = useRef<string | null>(null);
 
-  const sections = selectedDevice.layout
-    ? [
-        {
-          id: 'controls',
-          title: 'Controls',
-          buttons: Object.keys(selectedDevice.commands).map(action => ({
-            id: action,
-            label: action.replace(/_/g, ' '),
-            action,
-          })),
-        },
-      ]
-    : [];
+  // Resolve the real backend URL on mount (may differ from build-time default on real devices)
+  useEffect(() => {
+    void getApiBaseUrl().then(url => setApiBaseUrlState(url));
+  }, []);
+
+  // On mount, proactively check pairing status for Android TV devices.
+  useEffect(() => {
+    if (!isAndroidTV) return;
+    void AndroidTV.isPaired(address).then(paired => {
+      if (!paired) setShowPairingModal(true);
+    });
+  }, [isAndroidTV, address]);
+
+  const showToast = useCallback((message: string, ok: boolean) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ message, ok });
+    Animated.sequence([
+      Animated.timing(toastAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
+      Animated.delay(1200),
+      Animated.timing(toastAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start(() => setToast(null));
+  }, [toastAnim]);
+
+  const handleButtonPress = useCallback(async (action: string) => {
+    showToast(`⏳ ${action}`, true);
+    try {
+      if (layoutId === 'samsung-tv') {
+        await SamsungTizen.sendAction(address, action);
+      } else if (isAndroidTV) {
+        try {
+          await AndroidTV.sendAction(address, action);
+        } catch (err) {
+          // NOT_PAIRED = not paired yet — open pairing modal and retry after pairing.
+          const code = (err as Error & { code?: string }).code;
+          if (code === ANDROID_TV_NOT_PAIRED) {
+            pendingActionRef.current = action;
+            setShowPairingModal(true);
+            return;
+          }
+          throw err;
+        }
+      } else {
+        const res = await fetch(`${apiBaseUrl}/api/commands`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deviceId: address, action }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      }
+      showToast(`✓ ${action}`, true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === SAMSUNG_UNAUTHORIZED) {
+        Alert.alert(
+          'TV pairing required',
+          'Your Samsung TV is blocking connections.\n\n' +
+          '1. Find the physical button on the back of your TV (center joystick).\n' +
+          '2. Press it to open the menu.\n' +
+          '3. Navigate to:\n' +
+          '   Settings › General › External Device Manager › Device Connection Manager\n' +
+          '4. Set "Access Notification" to "First Time Only".\n' +
+          '5. Then press any button here — the TV will show a popup, approve it using the physical button.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        console.warn('[RemoteScreen] command failed:', msg);
+        showToast(msg, false);
+      }
+    }
+  }, [address, layoutId, isAndroidTV, apiBaseUrl, showToast]);
+
+  const handlePaired = useCallback(() => {
+    setShowPairingModal(false);
+    // Retry any button press that triggered the pairing modal.
+    const pendingAction = pendingActionRef.current;
+    pendingActionRef.current = null;
+    if (pendingAction) void handleButtonPress(pendingAction);
+  }, [handleButtonPress]);
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <Text style={[styles.title, { color: theme.colors.text }]}>
-        {selectedDevice.brand.toUpperCase()} {selectedDevice.model}
-      </Text>
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#0A0E1A" />
+
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
+        </TouchableOpacity>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle} numberOfLines={1}>{deviceName}</Text>
+          <Text style={styles.headerSub}>{address}</Text>
+        </View>
+        <View style={styles.backBtn} />
+      </View>
+
       <RemoteLayout sections={sections} onButtonPress={handleButtonPress} />
+
+      {toast && (
+        <Animated.View style={[styles.toast, toast.ok ? styles.toastOk : styles.toastErr, { opacity: toastAnim }]}>
+          <Text style={styles.toastText}>{toast.message}</Text>
+        </Animated.View>
+      )}
+
+      {isAndroidTV && (
+        <AndroidTVPairingModal
+          visible={showPairingModal}
+          deviceName={deviceName}
+          deviceIp={address}
+          onPaired={handlePaired}
+          onCancel={() => {
+            setShowPairingModal(false);
+            pendingActionRef.current = null;
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -71,12 +189,53 @@ export function RemoteScreen(): React.ReactElement {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 60,
+    backgroundColor: '#0A0E1A',
   },
-  title: {
-    fontSize: 18,
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 52,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E2535',
+  },
+  backBtn: {
+    width: 36,
+    alignItems: 'center',
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  headerSub: {
+    fontSize: 12,
+    color: '#8892A4',
+    marginTop: 2,
+  },
+  toast: {
+    position: 'absolute',
+    bottom: 36,
+    alignSelf: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  toastOk: {
+    backgroundColor: '#00C9A7',
+  },
+  toastErr: {
+    backgroundColor: '#FF4F4F',
+  },
+  toastText: {
+    fontSize: 13,
     fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 16,
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
 });

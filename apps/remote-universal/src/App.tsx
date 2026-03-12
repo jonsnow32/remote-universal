@@ -25,6 +25,7 @@ import { ACControlScreen } from './screens/ACControlScreen';
 import { MacroScreen } from './screens/MacroScreen';
 import { MacroEditorScreen } from './screens/MacroEditorScreen';
 import { TVGuideScreen } from './screens/TVGuideScreen';
+import { RemoteScreen } from './screens/RemoteScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 
 // Navigation types
@@ -33,12 +34,14 @@ import type {
   MainTabParamList,
   HomeStackParamList,
   MacroStackParamList,
+  DevicesStackParamList,
 } from './types/navigation';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const MainTab = createBottomTabNavigator<MainTabParamList>();
 const HomeStack = createNativeStackNavigator<HomeStackParamList>();
 const MacroStack = createNativeStackNavigator<MacroStackParamList>();
+const DevicesStack = createNativeStackNavigator<DevicesStackParamList>();
 
 function HomeNavigator() {
   return (
@@ -56,6 +59,15 @@ function MacroNavigator() {
       <MacroStack.Screen name="MacroList" component={MacroScreen} />
       <MacroStack.Screen name="MacroEditor" component={MacroEditorScreen} />
     </MacroStack.Navigator>
+  );
+}
+
+function DevicesNavigator() {
+  return (
+    <DevicesStack.Navigator screenOptions={{ headerShown: false }}>
+      <DevicesStack.Screen name="DevicesList" component={DiscoveryScreen} />
+      <DevicesStack.Screen name="DeviceRemote" component={RemoteScreen} />
+    </DevicesStack.Navigator>
   );
 }
 
@@ -98,7 +110,7 @@ function MainTabsNavigator() {
       })}
     >
       <MainTab.Screen name="Home" component={HomeNavigator} />
-      <MainTab.Screen name="Devices" component={DiscoveryScreen} />
+      <MainTab.Screen name="Devices" component={DevicesNavigator} />
       <MainTab.Screen name="Macros" component={MacroNavigator} />
       <MainTab.Screen name="Guide" component={TVGuideScreen} />
       <MainTab.Screen name="Settings" component={SettingsScreen} />

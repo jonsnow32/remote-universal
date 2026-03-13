@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { NativeModules } from 'react-native';
 
 /**
  * Sentinel error code returned when the TV rejects the connection with
@@ -103,7 +104,6 @@ export class SamsungTizen {
     SamsungTizen.disconnectSync(ip);
 
     const storedToken = await AsyncStorage.getItem(TOKEN_PREFIX + ip);
-    const cachedPort = await AsyncStorage.getItem(PORT_PREFIX + ip);
 
     // When we have a token (reconnection), reuse the saved device ID so the TV
     // recognises us.  For first-time pairing (no token), generate a FRESH random
@@ -112,17 +112,30 @@ export class SamsungTizen {
       ? (await getSavedDeviceId()) ?? newDeviceId()
       : newDeviceId();
 
+    // SamsungTizenPairingModule uses lazy init (BaseReactPackage / New Architecture).
+    // initialize() — which calls WebSocketModule.setCustomClientBuilder — only runs
+    // when the module is first accessed from JS. Call pairWithTV (no-op on Android)
+    // to force that initialization before any WebSocket is created.
+    const pairingMod = NativeModules.SamsungTizenPairing as
+      { pairWithTV(ip: string, deviceId: string): Promise<void> } | null | undefined;
+    if (pairingMod) {
+      try { await pairingMod.pairWithTV(ip, deviceId); } catch { /* ignore */ }
+    }
+
+    // SamsungTizenPairingModule.initialize() sets WebSocketModule.setCustomClientBuilder
+    // so the JS WebSocket can negotiate Samsung's self-signed cert on WSS 8002.
+    // JS handles the full pairing flow (popup → token → persistent WSS 8002 session).
+    const cachedPort = await AsyncStorage.getItem(PORT_PREFIX + ip);
     console.log(`[SamsungTizen] connect ip=${ip} token=${storedToken ? 'yes' : 'none'} cachedPort=${cachedPort} deviceId=${deviceId}`);
 
     // Probe TV info once (helps diagnose model-specific issues).
     void SamsungTizen.probeTv(ip);
 
-    // For first-time pairing (no token), ALWAYS try WSS 8002 first — that's
-    // where Samsung shows the Allow popup. Only use cached port when reconnecting
-    // with an existing token.
+    // Prefer the last working port (cached). For no-token (first pairing) or
+    // unknown port: try WSS 8002 first — the popup only appears on 8002.
     const ports = storedToken && cachedPort === '8001' ? [8001, 8002]
                 : storedToken && cachedPort === '8002' ? [8002, 8001]
-                : [8002, 8001]; // no token → always try WSS first for popup
+                : [8002, 8001];
 
     let lastError: Error | null = null;
     for (let i = 0; i < ports.length; i++) {
@@ -139,18 +152,13 @@ export class SamsungTizen {
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
         console.log(`[SamsungTizen] Port ${port} failed: ${lastError.message}`);
-        // If unauthorized with a stale token, clear it and retry same port.
+        // If unauthorized with a stale token, clear everything and re-enter
+        // connectInner to start a fresh WSS 8002 pairing (popup flow).
         if (lastError.message === SAMSUNG_UNAUTHORIZED && storedToken) {
-          console.log('[SamsungTizen] Clearing stale token and retrying port', port);
+          console.log('[SamsungTizen] Stale token — clearing and re-pairing...');
           await AsyncStorage.removeItem(TOKEN_PREFIX + ip);
-          try {
-            await SamsungTizen.tryConnect(ip, port, null, deviceId, retryMs);
-            void AsyncStorage.setItem(PORT_PREFIX + ip, String(port));
-            return;
-          } catch (retryErr) {
-            lastError = retryErr instanceof Error ? retryErr : new Error(String(retryErr));
-            console.log(`[SamsungTizen] Port ${port} retry failed: ${lastError.message}`);
-          }
+          await AsyncStorage.removeItem(PORT_PREFIX + ip);
+          return SamsungTizen.connectInner(ip);
         }
       }
     }
@@ -158,32 +166,18 @@ export class SamsungTizen {
   }
 
   /**
-   * Attempt a single WebSocket connection on a specific port.
+   * Attempt a WebSocket connection on a specific port.
    * Resolves on ms.channel.connect.
    *
-   * First-time pairing (no token):
-   *   Samsung TVs send ms.channel.unauthorized → close the WS → show popup.
-   *   After the user clicks Allow on TV, the NEXT connection gets ms.channel.connect.
-   *   So we retry every 2s for up to 30s to catch the moment the user accepts.
-   *
-   * With stored token: connect once, fail immediately if unauthorized (stale token).
+   * With token: single attempt, fail fast on unauthorized (stale token).
+   * Without token: retry every 2s until ms.channel.connect or deadline (popup flow).
    */
   private static tryConnect(ip: string, port: number, token: string | null, deviceId: string, retryMs = 30_000): Promise<void> {
     if (token) {
-      // Have a token — single attempt, fail fast.
-      return SamsungTizen.tryConnectOnce(ip, port, token, 10_000, deviceId);
+      // Have a token — single attempt. Unauthorized means stale token; don't retry.
+      return SamsungTizen.tryConnectOnce(ip, port, token, Math.min(retryMs, 10_000), deviceId);
     }
-
-    // No token — first-time pairing.
-    //
-    // Older TVs (port 8001): send unauthorized → keep WS open → show popup →
-    //   send ms.channel.connect on the SAME connection once user accepts.
-    //
-    // Newer TVs (port 8002): send unauthorized → close WS → show popup →
-    //   next NEW connection gets ms.channel.connect.
-    //
-    // Strategy: open ONE long-lived connection (30s timeout). If the TV closes
-    // the WS after unauthorized, we detect it in onclose and re-open.
+    // No token — retry every 2s until the TV shows the popup and user clicks Allow.
     return new Promise<void>((resolve, reject) => {
       const deadline = Date.now() + retryMs;
       let cancelled = false;
@@ -195,14 +189,11 @@ export class SamsungTizen {
         }
 
         const remaining = deadline - Date.now();
-        // Give each attempt the full remaining time — on older TVs the WS
-        // stays open and we wait for user interaction on the same connection.
         SamsungTizen.tryConnectOnce(ip, port, null, remaining, deviceId)
           .then(resolve)
           .catch((err) => {
             const msg = err instanceof Error ? err.message : String(err);
             if (msg === SAMSUNG_UNAUTHORIZED && Date.now() < deadline) {
-              // TV closed the WS after unauthorized (newer TV) — reconnect.
               console.log('[SamsungTizen] TV closed WS after unauthorized, reconnecting in 2s...');
               setTimeout(attempt, 2_000);
             } else {

@@ -12,12 +12,11 @@ import com.facebook.react.ReactHost
 import com.facebook.react.common.ReleaseLevel
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint
 import com.facebook.react.defaults.DefaultReactNativeHost
-import com.facebook.react.modules.websocket.WebSocketModule
-
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
 import com.remoteplatform.nativemodules.AndroidTVPackage
 import com.remoteplatform.nativemodules.IRBlasterPackage
+import com.remoteplatform.nativemodules.SamsungTizenPairingPackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -28,6 +27,7 @@ class MainApplication : Application(), ReactApplication {
             PackageList(this).packages.apply {
               add(AndroidTVPackage())
               add(IRBlasterPackage())
+              add(SamsungTizenPairingPackage())
             }
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
@@ -43,10 +43,6 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
-    // Allow self-signed TLS certificates from LAN devices (Samsung TV port 8002).
-    // WebSocketModule.setCustomClientBuilder is the RN 0.81 hook — it is applied
-    // to every JS WebSocket connection before the OkHttpClient is built.
-    WebSocketModule.setCustomClientBuilder { builder -> LanSslConfigurator.apply(builder) }
     DefaultNewArchitectureEntryPoint.releaseLevel = try {
       ReleaseLevel.valueOf(BuildConfig.REACT_NATIVE_RELEASE_LEVEL.uppercase())
     } catch (e: IllegalArgumentException) {

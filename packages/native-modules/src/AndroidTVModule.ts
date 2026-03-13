@@ -1,4 +1,4 @@
-import { TurboModuleRegistry } from 'react-native';
+import { NativeModules } from 'react-native';
 
 interface AndroidTVNative {
   isPaired(ip: string): Promise<boolean>;
@@ -9,7 +9,7 @@ interface AndroidTVNative {
 }
 
 function getNative(): AndroidTVNative | null {
-  return TurboModuleRegistry.get<AndroidTVNative>('AndroidTV');
+  return (NativeModules.AndroidTV as AndroidTVNative) ?? null;
 }
 
 const stub = (): Promise<never> =>

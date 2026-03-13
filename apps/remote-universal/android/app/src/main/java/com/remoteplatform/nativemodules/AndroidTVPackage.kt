@@ -20,7 +20,7 @@ class AndroidTVPackage : BaseReactPackage() {
                     false, // canOverrideExistingModule
                     false, // needsEagerInit
                     false, // isCxxModule
-                    true   // isTurboModule — AndroidTVModule implements TurboModule
+                    false  // isTurboModule — legacy module, served via nativeModuleProxy
                 )
             )
         }

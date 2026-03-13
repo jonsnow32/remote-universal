@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   TextInput,
   KeyboardAvoidingView,
-  TurboModuleRegistry,
   NativeModules,
   Platform,
 } from 'react-native';
@@ -16,15 +15,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AndroidTV } from '@remote/device-sdk';
 
-/** Returns true when the AndroidTV native module is linked. Checked lazily at
- *  call-time to avoid evaluating before the TurboModule registry is ready. */
+/** Returns true when the AndroidTV native module is linked. */
 function isAndroidTVAvailable(): boolean {
-  const viaRegistry = TurboModuleRegistry.get('AndroidTV') != null;
-  const viaLegacy = NativeModules.AndroidTV != null;
+  const available = NativeModules.AndroidTV != null;
   if (__DEV__) {
-    console.log('[AndroidTV] TurboModuleRegistry:', viaRegistry, '| NativeModules:', viaLegacy);
+    console.log('[AndroidTV] NativeModules.AndroidTV available:', available);
   }
-  return viaRegistry || viaLegacy;
+  return available;
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────

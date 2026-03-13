@@ -3,7 +3,6 @@ package com.remoteplatform.nativemodules
 import android.content.Context
 import android.util.Base64
 import com.facebook.react.bridge.*
-import com.facebook.react.turbomodule.core.interfaces.TurboModule
 import java.io.*
 import java.math.BigInteger
 import java.net.InetSocketAddress
@@ -33,7 +32,7 @@ import javax.net.ssl.*
  * the calling thread pool, which is safe per the React Native bridge contract.
  */
 class AndroidTVModule(private val rc: ReactApplicationContext) :
-    ReactContextBaseJavaModule(rc), TurboModule {
+    ReactContextBaseJavaModule(rc) {
 
     override fun getName(): String = "AndroidTV"
 

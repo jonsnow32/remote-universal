@@ -19,6 +19,8 @@ import {
   androidTvIsPaired,
   androidTvStartPairing,
   androidTvConfirmPairing,
+  androidTvConnectRemote,
+  androidTvDisconnectRemote,
   androidTvSendKey,
   androidTvUnpair,
 } from '@remote/native-modules';
@@ -66,9 +68,27 @@ export class AndroidTV {
   /**
    * Step 2 — Submit the PIN shown on the TV.
    * Rejects with code "BAD_PIN" if the PIN is wrong.
+   * Automatically opens a persistent remote session on success.
    */
-  static confirmPairing(ip: string, pin: string): Promise<void> {
-    return androidTvConfirmPairing(ip, pin);
+  static async confirmPairing(ip: string, pin: string): Promise<void> {
+    await androidTvConfirmPairing(ip, pin);
+    // Pre-establish persistent connection so first sendAction is instant.
+    try { await androidTvConnectRemote(ip); } catch (_) { /* best-effort */ }
+  }
+
+  /**
+   * Open a persistent remote-control session (port 6466).
+   * Called automatically after pairing; can also be called manually.
+   */
+  static connectRemote(ip: string): Promise<void> {
+    return androidTvConnectRemote(ip);
+  }
+
+  /**
+   * Close the persistent remote-control session.
+   */
+  static disconnectRemote(ip: string): Promise<void> {
+    return androidTvDisconnectRemote(ip);
   }
 
   /**

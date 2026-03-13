@@ -64,6 +64,7 @@ export function RemoteScreen({ route }: DeviceRemoteProps): React.ReactElement {
 
   // Android TV pairing state
   const isAndroidTV = layoutId === 'universal-stb';
+  const isSamsungTV = layoutId === 'samsung-tv';
   const [showPairingModal, setShowPairingModal] = useState(false);
   const pendingActionRef = useRef<string | null>(null);
 
@@ -73,12 +74,33 @@ export function RemoteScreen({ route }: DeviceRemoteProps): React.ReactElement {
   }, []);
 
   // On mount, proactively check pairing status for Android TV devices.
+  // If already paired, pre-establish persistent remote session for instant key sends.
   useEffect(() => {
     if (!isAndroidTV) return;
     void AndroidTV.isPaired(address).then(paired => {
       if (!paired) setShowPairingModal(true);
+      else void AndroidTV.connectRemote(address).catch(() => {});
     });
+    return () => { void AndroidTV.disconnectRemote(address).catch(() => {}); };
   }, [isAndroidTV, address]);
+
+  // Pre-establish persistent WebSocket for Samsung Tizen TVs.
+  useEffect(() => {
+    if (!isSamsungTV) return;
+    let cancelled = false;
+    void SamsungTizen.connect(address).catch((err) => {
+      if (cancelled) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === SAMSUNG_UNAUTHORIZED) {
+        Alert.alert(
+          'Samsung TV pairing',
+          'Please check your TV screen for an "Allow" popup and accept it.\n\n' +
+          'If no popup appears, go to:\nSettings › General › External Device Manager › Device Connection Manager\nand set Access Notification to "First Time Only".',
+        );
+      }
+    });
+    return () => { cancelled = true; SamsungTizen.disconnect(address); };
+  }, [isSamsungTV, address]);
 
   const showToast = useCallback((message: string, ok: boolean) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);

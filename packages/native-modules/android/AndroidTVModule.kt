@@ -49,6 +49,113 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
     // Latch: set to a promise when confirmPairing is called, resolved by reader thread
     private val confirmPromises = ConcurrentHashMap<String, Promise>()
 
+    // ── Persistent remote-control sessions (ip → open TLS session on 6466) ─
+    private val remoteSessions = ConcurrentHashMap<String, RemoteSession>()
+
+    private inner class RemoteSession(val ip: String) {
+        var socket: SSLSocket? = null
+        var output: OutputStream? = null
+        @Volatile var alive = false
+        private val writeLock = Any()
+
+        fun connect() {
+            close()
+            val cert = getOrGenerateCert()
+            val s = createTlsSocket(ip, 6466, cert.key, cert.cert)
+            socket = s
+            val out = s.outputStream
+            val inp = s.inputStream
+            output = out
+
+            // Protocol handshake: read until Configure exchange is done.
+            val deadline = System.currentTimeMillis() + 10_000
+            var ready = false
+            while (!ready && System.currentTimeMillis() < deadline) {
+                val msg = readDelimitedMessage(inp) ?: break
+                val fields = decodeMessage(msg)
+                when {
+                    fields.containsKey(RMF_CONFIGURE) -> {
+                        out.write(buildRemoteMessage(mapOf(
+                            RMF_CONFIGURE to V_MSG(buildRemoteConfigure()),
+                        )))
+                        out.flush()
+                        ready = true
+                    }
+                    fields.containsKey(RMF_SET_ACTIVE) -> {
+                        out.write(buildRemoteMessage(mapOf(
+                            RMF_SET_ACTIVE to V_MSG(varintField(1, 622)),
+                        )))
+                        out.flush()
+                    }
+                    fields.containsKey(RMF_PING) -> {
+                        val pingFields = decodeMessage(
+                            (fields[RMF_PING] as? ByteArray) ?: ByteArray(0)
+                        )
+                        val val1 = (pingFields[1] as? Long)?.toInt() ?: 0
+                        out.write(buildRemoteMessage(mapOf(
+                            RMF_PONG to V_MSG(varintField(1, val1)),
+                        )))
+                        out.flush()
+                    }
+                }
+            }
+            if (!ready) {
+                close()
+                throw IOException("TV did not become ready for commands")
+            }
+            alive = true
+
+            // Background reader thread: handles ping/pong to keep the session alive.
+            executor.execute {
+                try {
+                    while (alive) {
+                        val msg = readDelimitedMessage(inp) ?: break
+                        val fields = decodeMessage(msg)
+                        when {
+                            fields.containsKey(RMF_PING) -> {
+                                val pf = decodeMessage(
+                                    (fields[RMF_PING] as? ByteArray) ?: ByteArray(0)
+                                )
+                                val v = (pf[1] as? Long)?.toInt() ?: 0
+                                synchronized(writeLock) {
+                                    out.write(buildRemoteMessage(mapOf(
+                                        RMF_PONG to V_MSG(varintField(1, v)),
+                                    )))
+                                    out.flush()
+                                }
+                            }
+                            // Ignore other messages (SetActive, etc.)
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Connection lost — mark dead so next sendKey reconnects.
+                } finally {
+                    alive = false
+                }
+            }
+        }
+
+        fun sendKeyImmediate(keyCode: Int) {
+            val out = output ?: throw IOException("Not connected")
+            synchronized(writeLock) {
+                out.write(buildRemoteMessage(mapOf(
+                    RMF_KEY to V_MSG(
+                        varintField(1, keyCode) +
+                        varintField(2, DIR_SHORT)
+                    ),
+                )))
+                out.flush()
+            }
+        }
+
+        fun close() {
+            alive = false
+            try { socket?.close() } catch (_: Exception) {}
+            socket = null
+            output = null
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // JS-facing API
     // ═══════════════════════════════════════════════════════════════════════
@@ -187,8 +294,47 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
     }
 
     /**
+     * Open a persistent remote-control session to the TV (port 6466).
+     * Call after pairing to pre-establish the connection.
+     * Subsequent sendKey calls will be near-instant.
+     */
+    @ReactMethod
+    fun connectRemote(ip: String, promise: Promise) {
+        executor.execute {
+            if (!loadPairedIps().contains(ip)) {
+                promise.reject("NOT_PAIRED", "Device $ip is not paired")
+                return@execute
+            }
+            try {
+                val session = RemoteSession(ip)
+                session.connect()
+                remoteSessions[ip]?.close()
+                remoteSessions[ip] = session
+                promise.resolve(null)
+            } catch (e: Exception) {
+                val msg = e.message ?: "Unknown error"
+                if (msg.contains("ECONNRESET") || msg.contains("reset")) {
+                    removePairedIp(ip)
+                    promise.reject("NOT_PAIRED", "TV rejected connection — please re-pair")
+                } else {
+                    promise.reject("CONNECT_ERROR", msg, e)
+                }
+            }
+        }
+    }
+
+    /**
+     * Close the persistent remote-control session.
+     */
+    @ReactMethod
+    fun disconnectRemote(ip: String, promise: Promise) {
+        remoteSessions.remove(ip)?.close()
+        promise.resolve(null)
+    }
+
+    /**
      * Send a single ATVRS key event to a paired TV.
-     * Opens a fresh TLS connection for each call.
+     * Uses the persistent session if available, otherwise opens one.
      */
     @ReactMethod
     fun sendKey(ip: String, keyCode: Int, promise: Promise) {
@@ -198,82 +344,35 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
                 return@execute
             }
 
-            var socket: SSLSocket? = null
             try {
-                val cert = getOrGenerateCert()
-                socket = createTlsSocket(ip, 6466, cert.key, cert.cert)
-                val out = socket.outputStream
-                val inp = socket.inputStream
-
-                // Exchange: Configure → SetActive → PingPong → then send key.
-                var ready = false
-                val deadline = System.currentTimeMillis() + 10_000
-
-                while (!ready && System.currentTimeMillis() < deadline) {
-                    val msg = readDelimitedMessage(inp) ?: break
-                    val fields = decodeMessage(msg)
-
-                    when {
-                        fields.containsKey(RMF_CONFIGURE) -> {
-                            out.write(buildRemoteMessage(mapOf(
-                                RMF_CONFIGURE to V_MSG(buildRemoteConfigure()),
-                            )))
-                            out.flush()
-                            ready = true   // after configure exchange we can send
-                        }
-                        fields.containsKey(RMF_SET_ACTIVE) -> {
-                            out.write(buildRemoteMessage(mapOf(
-                                RMF_SET_ACTIVE to V_MSG(varintField(1, 622)),
-                            )))
-                            out.flush()
-                        }
-                        fields.containsKey(RMF_PING) -> {
-                            val pingFields = decodeMessage(
-                                (fields[RMF_PING] as? ByteArray) ?: ByteArray(0)
-                            )
-                            val val1 = (pingFields[1] as? Long)?.toInt() ?: 0
-                            out.write(buildRemoteMessage(mapOf(
-                                RMF_PONG to V_MSG(varintField(1, val1)),
-                            )))
-                            out.flush()
-                        }
-                    }
+                var session = remoteSessions[ip]
+                // Reconnect if there is no session or it died.
+                if (session == null || !session.alive) {
+                    session?.close()
+                    val newSession = RemoteSession(ip)
+                    newSession.connect()
+                    remoteSessions[ip] = newSession
+                    session = newSession
                 }
-
-                if (!ready) {
-                    promise.reject("SEND_ERROR", "TV did not become ready for commands")
-                    return@execute
-                }
-
-                // Send the key injection.
-                out.write(buildRemoteMessage(mapOf(
-                    RMF_KEY to V_MSG(
-                        varintField(1, keyCode) +   // key_code
-                        varintField(2, DIR_SHORT)    // direction = SHORT (3)
-                    ),
-                )))
-                out.flush()
-
-                Thread.sleep(300)   // give TV time to register the keypress
+                session.sendKeyImmediate(keyCode)
                 promise.resolve(null)
-
             } catch (e: Exception) {
+                // On failure, tear down the session so next call retries.
+                remoteSessions.remove(ip)?.close()
                 val msg = e.message ?: "Unknown error"
                 if (msg.contains("ECONNRESET") || msg.contains("reset")) {
-                    // TV rejected our cert — we're no longer paired.
                     removePairedIp(ip)
                     promise.reject("NOT_PAIRED", "TV rejected connection — please re-pair")
                 } else {
                     promise.reject("SEND_ERROR", msg, e)
                 }
-            } finally {
-                try { socket?.close() } catch (_: Exception) {}
             }
         }
     }
 
     @ReactMethod
     fun unpair(ip: String, promise: Promise) {
+        remoteSessions.remove(ip)?.close()
         removePairedIp(ip)
         pairingSockets.remove(ip)?.let { try { it.close() } catch (_: Exception) {} }
         promise.resolve(null)

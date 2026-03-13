@@ -8,6 +8,8 @@ export {
   androidTvIsPaired,
   androidTvStartPairing,
   androidTvConfirmPairing,
+  androidTvConnectRemote,
+  androidTvDisconnectRemote,
   androidTvSendKey,
   androidTvUnpair,
 } from './AndroidTVModule';

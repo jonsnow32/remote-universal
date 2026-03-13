@@ -4,6 +4,8 @@ interface AndroidTVNative {
   isPaired(ip: string): Promise<boolean>;
   startPairing(ip: string): Promise<void>;
   confirmPairing(ip: string, pin: string): Promise<void>;
+  connectRemote(ip: string): Promise<void>;
+  disconnectRemote(ip: string): Promise<void>;
   sendKey(ip: string, keyCode: number): Promise<void>;
   unpair(ip: string): Promise<void>;
 }
@@ -43,9 +45,23 @@ export function androidTvConfirmPairing(ip: string, pin: string): Promise<void> 
 }
 
 /**
+ * Open a persistent remote-control session to the TV (port 6466).
+ * Call after pairing to pre-establish the connection so key sends are instant.
+ */
+export function androidTvConnectRemote(ip: string): Promise<void> {
+  return getNative()?.connectRemote(ip) ?? stub();
+}
+
+/**
+ * Close the persistent remote-control session.
+ */
+export function androidTvDisconnectRemote(ip: string): Promise<void> {
+  return getNative()?.disconnectRemote(ip) ?? stub();
+}
+
+/**
  * Inject a single keypress to a paired Android TV.
- * Opens a fresh TLS connection, exchanges the configure/ping handshake,
- * sends the key, then closes the connection.
+ * Uses the persistent session if available, otherwise opens one on first call.
  *
  * If the TV has been factory-reset the Promise rejects with code `"NOT_PAIRED"`.
  */

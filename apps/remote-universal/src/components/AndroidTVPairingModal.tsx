@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   TextInput,
   KeyboardAvoidingView,
+  ScrollView,
   NativeModules,
   Platform,
 } from 'react-native';
@@ -102,6 +103,11 @@ export function AndroidTVPairingModal({
     setStep('idle');
   }, []);
 
+  /** Accept only hex characters (0-9, A-F) and auto-uppercase. */
+  const handlePinChange = useCallback((text: string) => {
+    setPin(text.replace(/[^0-9a-fA-F]/g, '').toUpperCase());
+  }, []);
+
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   const renderBody = () => {
@@ -163,10 +169,11 @@ export function AndroidTVPairingModal({
               ref={pinInputRef}
               style={styles.pinInput}
               value={pin}
-              onChangeText={setPin}
-              keyboardType="number-pad"
+              onChangeText={handlePinChange}
+              autoCapitalize="characters"
+              autoCorrect={false}
               maxLength={6}
-              placeholder="000000"
+              placeholder="0A1B2C"
               placeholderTextColor="#3A4255"
               textAlign="center"
               returnKeyType="done"
@@ -230,23 +237,30 @@ export function AndroidTVPairingModal({
     >
       <KeyboardAvoidingView
         style={styles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + 24 }]}>
-          {/* Drag handle */}
-          <View style={styles.handle} />
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          bounces={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={[styles.sheet, { paddingBottom: insets.bottom + 24 }]}>
+            {/* Drag handle */}
+            <View style={styles.handle} />
 
-          {/* Close button */}
-          {!isBusy && (
-            <TouchableOpacity style={styles.closeBtn} onPress={handleCancel} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-              <Ionicons name="close" size={22} color="#8892A4" />
-            </TouchableOpacity>
-          )}
+            {/* Close button */}
+            {!isBusy && (
+              <TouchableOpacity style={styles.closeBtn} onPress={handleCancel} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <Ionicons name="close" size={22} color="#8892A4" />
+              </TouchableOpacity>
+            )}
 
-          <View style={styles.body}>
-            {renderBody()}
+            <View style={styles.body}>
+              {renderBody()}
+            </View>
           </View>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -257,8 +271,11 @@ export function AndroidTVPairingModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    justifyContent: 'flex-end',
     backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
   },
   sheet: {
     backgroundColor: '#131929',

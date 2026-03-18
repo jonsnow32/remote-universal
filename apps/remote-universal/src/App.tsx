@@ -1,179 +1,54 @@
-import React, { use, useEffect } from 'react';
-import { Text } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import React from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@remote/ui-kit';
 import { theme } from './theme';
-import { ProProvider } from './hooks/usePro';
-import { initPurchases } from './lib/purchases';
 
-// Onboarding
-import { SplashScreen } from './screens/onboarding/SplashScreen';
-import { PermissionsScreen } from './screens/onboarding/PermissionsScreen';
-import { SetupCompleteScreen } from './screens/onboarding/SetupCompleteScreen';
-
-// Main screens
-import { HomeScreen } from './screens/HomeScreen';
-import { PaywallScreen } from './screens/PaywallScreen';
+// Screens — 3 core screens (Discovery-first, no login wall)
 import { DiscoveryScreen } from './screens/DiscoveryScreen';
-import { TVRemoteScreen } from './screens/TVRemoteScreen';
-import { ACControlScreen } from './screens/ACControlScreen';
-import { MacroScreen } from './screens/MacroScreen';
-import { MacroEditorScreen } from './screens/MacroEditorScreen';
-import { TVGuideScreen } from './screens/TVGuideScreen';
 import { RemoteScreen } from './screens/RemoteScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 
 // Navigation types
-import type {
-  RootStackParamList,
-  MainTabParamList,
-  HomeStackParamList,
-  MacroStackParamList,
-  DevicesStackParamList,
-} from './types/navigation';
+import type { RootStackParamList } from './types/navigation';
 
-const RootStack = createNativeStackNavigator<RootStackParamList>();
-const MainTab = createBottomTabNavigator<MainTabParamList>();
-const HomeStack = createNativeStackNavigator<HomeStackParamList>();
-const MacroStack = createNativeStackNavigator<MacroStackParamList>();
-const DevicesStack = createNativeStackNavigator<DevicesStackParamList>();
-
-function HomeNavigator() {
-  return (
-    <HomeStack.Navigator screenOptions={{ headerShown: false }}>
-      <HomeStack.Screen name="HomeMain" component={HomeScreen} />
-      <HomeStack.Screen name="TVRemote" component={TVRemoteScreen} />
-      <HomeStack.Screen name="ACControl" component={ACControlScreen} />
-    </HomeStack.Navigator>
-  );
-}
-
-function MacroNavigator() {
-  return (
-    <MacroStack.Navigator screenOptions={{ headerShown: false }}>
-      <MacroStack.Screen name="MacroList" component={MacroScreen} />
-      <MacroStack.Screen name="MacroEditor" component={MacroEditorScreen} />
-    </MacroStack.Navigator>
-  );
-}
-
-function DevicesNavigator() {
-  return (
-    <DevicesStack.Navigator screenOptions={{ headerShown: false }}>
-      <DevicesStack.Screen name="DevicesList" component={DiscoveryScreen} />
-      <DevicesStack.Screen name="DeviceRemote" component={RemoteScreen} />
-    </DevicesStack.Navigator>
-  );
-}
-
-type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
-
-const TAB_ICONS: Record<string, { filled: IoniconName; outline: IoniconName }> = {
-  Home:     { filled: 'home',               outline: 'home-outline' },
-  Devices:  { filled: 'hardware-chip',      outline: 'hardware-chip-outline' },
-  Macros:   { filled: 'flash',              outline: 'flash-outline' },
-  Guide:    { filled: 'tv',                 outline: 'tv-outline' },
-  Settings: { filled: 'settings-sharp',     outline: 'settings-outline' },
-};
-
-function MainTabsNavigator() {
-  const insets = useSafeAreaInsets();
-  return (
-    <MainTab.Navigator
-      screenOptions={({ route }) => ({
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: '#141928',
-          borderTopColor: '#2A3147',
-          borderTopWidth: 1,
-          height: 80 + insets.bottom,
-          paddingBottom: 20 + insets.bottom,
-          paddingTop: 10,
-        },
-        tabBarActiveTintColor: '#6C63FF',
-        tabBarInactiveTintColor: '#8892A4',
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
-        },
-        tabBarIcon: ({ color, focused }) => {
-          const icons = TAB_ICONS[route.name];
-          const name: IoniconName = icons
-            ? (focused ? icons.filled : icons.outline)
-            : 'ellipse-outline';
-          return <Ionicons name={name} size={22} color={color} />;
-        },
-      })}
-    >
-      <MainTab.Screen name="Home" component={HomeNavigator} />
-      <MainTab.Screen name="Devices" component={DevicesNavigator} />
-      <MainTab.Screen name="Macros" component={MacroNavigator} />
-      <MainTab.Screen name="Guide" component={TVGuideScreen} />
-      <MainTab.Screen name="Settings" component={SettingsScreen} />
-    </MainTab.Navigator>
-  );
-}
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 const navTheme = {
   ...DarkTheme,
   colors: {
     ...DarkTheme.colors,
-    primary: '#6C63FF',
+    primary: '#4FC3F7',
     background: '#0A0E1A',
     card: '#141928',
     text: '#FFFFFF',
-    border: '#2A3147',
+    border: '#1E2535',
   },
 };
 
 const queryClient = new QueryClient();
 
 export default function App(): React.ReactElement {
-  useEffect(() => {
-    initPurchases();
-  }, []);
-
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider theme={theme}>
-          <ProProvider>
-            <NavigationContainer theme={navTheme}>
-              <RootStack.Navigator
-                initialRouteName="Splash"
-                screenOptions={{ headerShown: false, animation: 'fade' }}
-              >
-                <RootStack.Screen name="Splash" component={SplashScreen} />
-                <RootStack.Screen name="Permissions" component={PermissionsScreen} />
-                <RootStack.Screen name="SetupComplete" component={SetupCompleteScreen} />
-                <RootStack.Screen name="MainTabs" component={MainTabsNavigator} />
-                <RootStack.Screen
-                  name="Paywall"
-                  options={{ presentation: 'modal', animation: 'slide_from_bottom', headerShown: false }}
-                >
-                  {({ navigation, route }) => (
-                    <PaywallScreen
-                      onClose={() => navigation.goBack()}
-                      reason={
-                        route.params?.trigger === 'device_limit'
-                          ? "You've reached the 3-device free limit"
-                          : route.params?.trigger === 'macro'
-                          ? 'Macros & automation are a Pro feature'
-                          : route.params?.trigger === 'backup'
-                          ? 'Cloud backup is a Pro feature'
-                          : undefined
-                      }
-                    />
-                  )}
-                </RootStack.Screen>
-              </RootStack.Navigator>
-            </NavigationContainer>
-          </ProProvider>
+          <NavigationContainer theme={navTheme}>
+            <Stack.Navigator
+              initialRouteName="Discovery"
+              screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
+            >
+              <Stack.Screen name="Discovery" component={DiscoveryScreen} />
+              <Stack.Screen name="Remote" component={RemoteScreen} />
+              <Stack.Screen
+                name="Settings"
+                component={SettingsScreen}
+                options={{ animation: 'slide_from_bottom', presentation: 'modal' }}
+              />
+            </Stack.Navigator>
+          </NavigationContainer>
         </ThemeProvider>
       </QueryClientProvider>
     </SafeAreaProvider>

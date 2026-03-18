@@ -3,8 +3,10 @@ import { Animated, View, Text, TouchableOpacity, StyleSheet, StatusBar, ScrollVi
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RemoteLayout } from '@remote/ui-kit';
 import { findLayout, SamsungTizen, SAMSUNG_UNAUTHORIZED, AndroidTV, ANDROID_TV_NOT_PAIRED } from '@remote/device-sdk';
+import { IRModule, BLEModule, HomeKitModule, MatterModule } from '@remote/native-modules';
 import type { DeviceType, LayoutSection, LayoutButton } from '@remote/core';
 import type { RemoteScreenProps, LayoutVariant, ConnectionProtocol } from '../types/navigation';
 import type { RemoteLayoutSection } from '@remote/ui-kit';
@@ -67,6 +69,21 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
   // Phase state
   const [phase, setPhase] = useState<Phase>('connecting');
   const [selectedLayout, setSelectedLayout] = useState<LayoutVariant>('universal');
+
+  // Persist layout preference per device
+  const layoutStorageKey = `layout_pref_${route.params.deviceId ?? address}`;
+  useEffect(() => {
+    void AsyncStorage.getItem(layoutStorageKey).then(saved => {
+      if (saved === 'universal' || saved === 'brand' || saved === 'simple' || saved === 'custom') {
+        setSelectedLayout(saved);
+      }
+    });
+  }, [layoutStorageKey]);
+
+  const handleLayoutSelect = useCallback((variant: LayoutVariant) => {
+    setSelectedLayout(variant);
+    void AsyncStorage.setItem(layoutStorageKey, variant);
+  }, [layoutStorageKey]);
 
   // Connection hook
   const connection = useConnection();
@@ -141,7 +158,7 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
     ]).start(() => setToast(null));
   }, [toastAnim]);
 
-  // Button handler
+  // Button handler — protocol-aware command dispatch
   const handleButtonPress = useCallback(async (action: string) => {
     showToast(`⏳ ${action}`, true);
     try {
@@ -159,20 +176,74 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
           }
           throw err;
         }
+      } else if (protocol === 'ir') {
+        await IRModule.transmit(address, action);
+      } else if (protocol === 'ble') {
+        await BLEModule.write(address, action);
+      } else if (protocol === 'homekit') {
+        await HomeKitModule.sendCharacteristic(address, action);
+      } else if (protocol === 'matter') {
+        await MatterModule.invoke(address, action);
+      } else if (protocol === 'wifi') {
+        // Generic Wi-Fi device (AirPlay, Roku, Chromecast, etc.)
+        // Try sending directly to the device, then fall back to the backend relay.
+        let sent = false;
+        const errors: string[] = [];
+
+        // 1. Direct device HTTP endpoint
+        if (address) {
+          try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 4000);
+            const directRes = await fetch(`http://${address}/remotecommand`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action }),
+              signal: ctrl.signal,
+            });
+            clearTimeout(timer);
+            sent = directRes.ok;
+            if (!sent) errors.push(`Device returned ${directRes.status}`);
+          } catch (e) {
+            errors.push(`Device unreachable`);
+          }
+        }
+
+        // 2. Backend relay — only attempt if URL points to a real host
+        //    (skip localhost / 127.x on physical devices where it's unreachable)
+        if (!sent && apiBaseUrl && !/localhost|127\.0\.0\.\d/i.test(apiBaseUrl)) {
+          try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 4000);
+            const res = await fetch(`${apiBaseUrl}/api/commands`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ deviceId: address, action }),
+              signal: ctrl.signal,
+            });
+            clearTimeout(timer);
+            if (!res.ok) errors.push(`Backend HTTP ${res.status}`);
+            else sent = true;
+          } catch {
+            errors.push('Backend relay unreachable');
+          }
+        }
+
+        if (!sent) {
+          throw new Error(
+            `Command not delivered — ${errors.join('; ') || 'no command channel configured for this device'}`,
+          );
+        }
       } else {
-        const res = await fetch(`${apiBaseUrl}/api/commands`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ deviceId: address, action }),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        throw new Error('No command channel available for this protocol');
       }
       showToast(`✓ ${action}`, true);
     } catch (err) {
+      console.log('Error sending command:', err);
       const msg = err instanceof Error ? err.message : String(err);
       showToast(msg, false);
     }
-  }, [address, isSamsungTV, isAndroidTV, apiBaseUrl, showToast]);
+  }, [address, protocol, isSamsungTV, isAndroidTV, apiBaseUrl, showToast]);
 
   const handlePaired = useCallback(() => {
     setShowPairingModal(false);
@@ -258,7 +329,7 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
           <LayoutPicker
             selected={selectedLayout}
             brandName={brand}
-            onSelect={setSelectedLayout}
+            onSelect={handleLayoutSelect}
           />
         </ScrollView>
 

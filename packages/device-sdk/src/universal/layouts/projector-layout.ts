@@ -54,7 +54,7 @@ export const universalProjectorLayout: RemoteLayoutDefinition = {
         { id: 'hdmi-1', label: 'HDMI 1', action: 'HDMI_1', row: 0, col: 0 },
         { id: 'hdmi-2', label: 'HDMI 2', action: 'HDMI_2', row: 0, col: 1 },
         { id: 'vga',    label: 'VGA',    action: 'VGA',    row: 0, col: 2 },
-        { id: 'usb',    label: 'USB',    icon: 'usb-outline', action: 'USB', row: 1, col: 0 },
+        { id: 'usb',    label: 'USB',    icon: 'save-outline', action: 'USB', row: 1, col: 0 },
         { id: 'av',     label: 'AV',     action: 'AV',     row: 1, col: 1 },
         { id: 'source', label: 'Source', icon: 'swap-horizontal-outline', action: 'SOURCE', row: 1, col: 2, variant: 'ghost' },
       ],

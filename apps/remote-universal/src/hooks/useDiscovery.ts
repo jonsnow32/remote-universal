@@ -68,7 +68,6 @@ export function useDiscovery() {
     if (scanRef.current) return;
     scanRef.current = true;
     setStatus('scanning');
-    setDevices([]);
 
     try {
       await discovery.discoverStream(
@@ -83,7 +82,13 @@ export function useDiscovery() {
             layoutId: inferLayoutId(device),
           };
           setDevices(prev => {
-            if (prev.some(d => d.raw.id === device.id)) return prev;
+            const idx = prev.findIndex(d => d.raw.id === device.id);
+            if (idx >= 0) {
+              // Update existing entry (address/name may have changed)
+              const updated = [...prev];
+              updated[idx] = info;
+              return updated;
+            }
             return [...prev, info];
           });
         },

@@ -46,7 +46,7 @@ export const universalSpeakerLayout: RemoteLayoutDefinition = {
       buttons: [
         { id: 'bt',       label: 'BT',       icon: 'bluetooth-outline',    action: 'SOURCE_BT',       row: 0, col: 0 },
         { id: 'aux',      label: 'AUX',      icon: 'headset-outline',      action: 'SOURCE_AUX',      row: 0, col: 1 },
-        { id: 'usb',      label: 'USB',      icon: 'usb-outline',          action: 'SOURCE_USB',      row: 0, col: 2 },
+        { id: 'usb',      label: 'USB',      icon: 'save-outline',             action: 'SOURCE_USB',      row: 0, col: 2 },
         { id: 'optical',  label: 'Optical',  icon: 'radio-outline',        action: 'SOURCE_OPTICAL',  row: 1, col: 0 },
         { id: 'wifi',     label: 'Wi-Fi',    icon: 'wifi-outline',         action: 'SOURCE_WIFI',     row: 1, col: 1 },
         { id: 'line-in',  label: 'Line In',  icon: 'git-merge-outline',    action: 'SOURCE_LINE_IN',  row: 1, col: 2 },

@@ -75,6 +75,8 @@ export function AndroidTVPairingModal({
       setStep('waiting_pin');
       setTimeout(() => pinInputRef.current?.focus(), 100);
     } catch (err) {
+      //log error details for debugging
+      console.error('Error starting Android TV pairing:', err);
       setErrorMessage(err instanceof Error ? err.message : String(err));
       setStep('error');
     }

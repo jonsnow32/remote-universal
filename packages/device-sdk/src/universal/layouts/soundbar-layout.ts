@@ -51,7 +51,7 @@ export const universalSoundbarLayout: RemoteLayoutDefinition = {
         { id: 'hdmi-arc',  label: 'HDMI ARC',  action: 'SOURCE_HDMI_ARC',  row: 0, col: 0 },
         { id: 'optical',   label: 'Optical',   icon: 'radio-outline',      action: 'SOURCE_OPTICAL',  row: 0, col: 1 },
         { id: 'bluetooth', label: 'BT',        icon: 'bluetooth-outline',  action: 'SOURCE_BT',       row: 0, col: 2 },
-        { id: 'usb',       label: 'USB',       icon: 'usb-outline',        action: 'SOURCE_USB',      row: 1, col: 0 },
+        { id: 'usb',       label: 'USB',       icon: 'save-outline',           action: 'SOURCE_USB',      row: 1, col: 0 },
         { id: 'aux',       label: 'AUX',       icon: 'headset-outline',    action: 'SOURCE_AUX',      row: 1, col: 1 },
         { id: 'wifi',      label: 'Wi-Fi',     icon: 'wifi-outline',       action: 'SOURCE_WIFI',     row: 1, col: 2 },
       ],

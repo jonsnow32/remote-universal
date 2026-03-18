@@ -52,11 +52,16 @@ export const ZeroconfModule = {
       const devices: ZeroconfDevice[] = [];
       const seen = new Set<string>();
       let zc: ZCInstance | undefined;
+      let scanStarted = false;
 
       function done() {
         clearTimeout(timer);
-        try { zc?.stop(); } catch { /* ignore native teardown errors */ }
-        try { zc?.removeDeviceListeners(); } catch { /* ignore */ }
+        if (scanStarted) {
+          try { zc?.stop(); } catch { /* ignore native teardown errors */ }
+        }
+        setTimeout(() => {
+          try { zc?.removeDeviceListeners(); } catch { /* ignore */ }
+        }, 50);
         resolve(devices);
       }
 
@@ -69,7 +74,8 @@ export const ZeroconfModule = {
 
         zc.on('resolved', (...args: unknown[]) => {
           const service = args[0] as ZCServiceRaw;
-          const address = service.addresses?.[0] ?? service.host ?? '';
+          const ipv4 = service.addresses?.find(a => a.includes('.') && !a.includes(':'));
+          const address = ipv4 ?? service.addresses?.[0] ?? service.host ?? '';
           const key = `${service.name}-${address}`;
           if (!seen.has(key)) {
             seen.add(key);
@@ -83,9 +89,14 @@ export const ZeroconfModule = {
           }
         });
 
+        zc.on('start', () => { scanStarted = true; });
+
         zc.on('error', (...args: unknown[]) => {
           const err = args[0];
-          console.warn('[ZeroconfModule] scan error:', err instanceof Error ? err.message : String(err));
+          const msg = err instanceof Error ? err.message : String(err);
+          // Suppress known non-fatal Android NsdManager errors
+          if (/listener not registered|failed with code: 0/i.test(msg)) return;
+          console.warn('[ZeroconfModule] scan error:', msg);
         });
 
         timer = setTimeout(done, timeoutMs);

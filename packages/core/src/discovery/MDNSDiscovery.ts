@@ -29,6 +29,8 @@ const SCAN_SERVICES: Array<{ type: string; protocol: string; deviceType: DeviceT
   { type: 'androidtvremote',  protocol: 'tcp', deviceType: 'stb' }, // Android TV (legacy)
 ];
 
+const SCAN_SETTLE_DELAY_MS = 300;
+
 /**
  * Discovers devices via mDNS/Bonjour (e.g., Chromecast, AirPlay, Roku).
  *
@@ -45,7 +47,12 @@ export class MDNSDiscovery {
     // number of concurrent discovery listeners; running them all in parallel
     // causes silent failures. Each scan is given a short individual window so
     // the total stays within the caller's timeoutMs budget.
-    const perTypeBudget = Math.floor(timeoutMs / SCAN_SERVICES.length);
+    // A small settle delay between scans lets the NSD listener fully deregister
+    // before the next scan starts, avoiding "listener not registered" errors.
+    const perTypeBudget = Math.max(
+      500,
+      Math.floor((timeoutMs - SCAN_SETTLE_DELAY_MS * SCAN_SERVICES.length) / SCAN_SERVICES.length),
+    );
 
     for (const { type, protocol, deviceType } of SCAN_SERVICES) {
       try {
@@ -57,6 +64,8 @@ export class MDNSDiscovery {
           }
         }
       } catch { /* per-type failures are non-fatal */ }
+      // Let Android NsdManager fully deregister the previous listener
+      await new Promise(r => setTimeout(r, SCAN_SETTLE_DELAY_MS));
     }
 
     return all;
@@ -72,11 +81,16 @@ export class MDNSDiscovery {
       const results: DiscoveredDevice[] = [];
       const seen = new Set<string>();
       let zc: ZCInstance | undefined;
+      let scanStarted = false;
 
       function done() {
         clearTimeout(timer);
-        try { zc?.stop(); } catch { /* ignore */ }
-        try { zc?.removeDeviceListeners(); } catch { /* ignore */ }
+        if (scanStarted) {
+          try { zc?.stop(); } catch { /* ignore */ }
+        }
+        setTimeout(() => {
+          try { zc?.removeDeviceListeners(); } catch { /* ignore */ }
+        }, 50);
         resolve(results);
       }
 
@@ -89,7 +103,8 @@ export class MDNSDiscovery {
 
         zc.on('resolved', (...args: unknown[]) => {
           const service = args[0] as ZCService;
-          const address = service.addresses?.[0] ?? service.host ?? '';
+          const ipv4 = service.addresses?.find(a => a.includes('.') && !a.includes(':'));
+          const address = ipv4 ?? service.addresses?.[0] ?? service.host ?? '';
           const id = `mdns-${serviceType}-${service.name}-${address}`;
           if (!seen.has(id)) {
             seen.add(id);
@@ -103,11 +118,16 @@ export class MDNSDiscovery {
           }
         });
 
+        zc.on('start', () => { scanStarted = true; });
+
         zc.on('error', (...args: unknown[]) => {
           const err = args[0];
+          const msg = err instanceof Error ? err.message : String(err);
+          // Suppress known non-fatal Android NsdManager errors
+          if (/listener not registered|failed with code: 0/i.test(msg)) return;
           console.warn(
             `[MDNSDiscovery:${serviceType}]`,
-            err instanceof Error ? err.message : String(err)
+            msg
           );
         });
 

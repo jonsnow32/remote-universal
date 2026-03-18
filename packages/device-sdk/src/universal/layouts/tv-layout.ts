@@ -93,7 +93,7 @@ export const universalTVLayout: RemoteLayoutDefinition = {
         { id: 'hdmi-1',  label: 'HDMI 1',                                   action: 'HDMI_1',   row: 0, col: 1 },
         { id: 'hdmi-2',  label: 'HDMI 2',                                   action: 'HDMI_2',   row: 0, col: 2 },
         { id: 'hdmi-3',  label: 'HDMI 3',                                   action: 'HDMI_3',   row: 0, col: 3 },
-        { id: 'usb',     label: 'USB',     icon: 'usb-outline',             action: 'USB',      row: 1, col: 1 },
+        { id: 'usb',     label: 'USB',     icon: 'save-outline',                action: 'USB',      row: 1, col: 1 },
         { id: 'av',      label: 'AV',                                        action: 'AV',       row: 1, col: 2 },
         { id: 'antenna', label: 'TV',      icon: 'tv-outline',              action: 'ANTENNA',  row: 1, col: 3 },
       ],
@@ -118,7 +118,7 @@ export const universalTVLayout: RemoteLayoutDefinition = {
       buttons: [
         { id: 'pic-mode', label: 'Picture',  icon: 'color-palette-outline', action: 'PICTURE_MODE',  row: 0, col: 0 },
         { id: 'sound-mode', label: 'Sound',  icon: 'musical-note-outline',  action: 'SOUND_MODE',    row: 0, col: 1 },
-        { id: 'cc',       label: 'CC',       icon: 'closed-captioning-outline', action: 'CLOSED_CAPTION', row: 0, col: 2 },
+        { id: 'cc',       label: 'CC',       icon: 'chatbox-ellipses-outline', action: 'CLOSED_CAPTION', row: 0, col: 2 },
         { id: '3d',       label: '3D',                                       action: 'THREE_D',        row: 0, col: 3, variant: 'ghost' },
       ],
     },

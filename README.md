@@ -55,7 +55,7 @@ pnpm --filter @remote/api dev
 
 ---
 
-## How to Add a New Brand SDK
+## How to Add a New Brand SDK``
 
 Follow these 5 steps to add a new brand (e.g., Sony):
 

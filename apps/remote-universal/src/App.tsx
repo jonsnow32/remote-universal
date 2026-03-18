@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { use, useEffect } from 'react';
 import { Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -82,6 +82,7 @@ const TAB_ICONS: Record<string, { filled: IoniconName; outline: IoniconName }> =
 };
 
 function MainTabsNavigator() {
+  const insets = useSafeAreaInsets();
   return (
     <MainTab.Navigator
       screenOptions={({ route }) => ({
@@ -90,8 +91,8 @@ function MainTabsNavigator() {
           backgroundColor: '#141928',
           borderTopColor: '#2A3147',
           borderTopWidth: 1,
-          height: 80,
-          paddingBottom: 20,
+          height: 80 + insets.bottom,
+          paddingBottom: 20 + insets.bottom,
           paddingTop: 10,
         },
         tabBarActiveTintColor: '#6C63FF',

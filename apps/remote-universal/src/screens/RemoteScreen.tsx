@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, View, Text, TouchableOpacity, StyleSheet, StatusBar, ScrollView, Alert } from 'react-native';
+import { Animated, View, Text, TouchableOpacity, StyleSheet, StatusBar, Alert, Modal, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,20 +8,15 @@ import { RemoteLayout } from '@remote/ui-kit';
 import { findLayout, SamsungTizen, SAMSUNG_UNAUTHORIZED, AndroidTV, ANDROID_TV_NOT_PAIRED } from '@remote/device-sdk';
 import { IRModule, BLEModule, HomeKitModule, MatterModule } from '@remote/native-modules';
 import type { DeviceType, LayoutSection, LayoutButton } from '@remote/core';
-import type { RemoteScreenProps, LayoutVariant, ConnectionProtocol } from '../types/navigation';
+import type { RemoteScreenProps, LayoutVariant } from '../types/navigation';
 import type { RemoteLayoutSection } from '@remote/ui-kit';
 import { appConfig } from '../config';
 import { getApiBaseUrl } from '../lib/apiUrl';
 import { AndroidTVPairingModal } from '../components/AndroidTVPairingModal';
-import { ConnectionSteps } from '../components/ConnectionSteps';
 import { LayoutPicker } from '../components/LayoutPicker';
 import { useConnection } from '../hooks/useConnection';
-import type { ConnectParams, PairingRequest } from '../hooks/useConnection';
+import type { ConnectParams } from '../hooks/useConnection';
 import { ProtocolBadge } from '../components/ProtocolBadge';
-
-// ─── Phase enum ──────────────────────────────────────────────────────────────
-
-type Phase = 'connecting' | 'layout' | 'remote';
 
 // ─── Layout helpers ──────────────────────────────────────────────────────────
 
@@ -55,9 +50,10 @@ function toRemoteLayoutSections(layoutId: string | undefined, fallbackId: string
   }));
 }
 
-// ─── Toast ───────────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface Toast { message: string; ok: boolean }
+type ConnStatus = 'connecting' | 'connected' | 'error';
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -66,9 +62,12 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const { deviceName, deviceType, address, protocol, brand, layoutId } = route.params;
 
-  // Phase state
-  const [phase, setPhase] = useState<Phase>('connecting');
+  // Connection runs in background — remote is shown immediately
+  const [connStatus, setConnStatus] = useState<ConnStatus>('connecting');
+
+  // Layout
   const [selectedLayout, setSelectedLayout] = useState<LayoutVariant>('universal');
+  const [showLayoutPicker, setShowLayoutPicker] = useState(false);
 
   // Persist layout preference per device
   const layoutStorageKey = `layout_pref_${route.params.deviceId ?? address}`;
@@ -82,6 +81,7 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
 
   const handleLayoutSelect = useCallback((variant: LayoutVariant) => {
     setSelectedLayout(variant);
+    setShowLayoutPicker(false);
     void AsyncStorage.setItem(layoutStorageKey, variant);
   }, [layoutStorageKey]);
 
@@ -96,32 +96,43 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
   // API URL
   const [apiBaseUrl, setApiBaseUrlState] = useState(appConfig.apiBaseUrl);
 
-  // Android TV / Samsung state
+  // Android TV / Samsung pairing state
   const isAndroidTV = layoutId === 'universal-stb';
   const isSamsungTV = layoutId === 'samsung-tv';
   const [showPairingModal, setShowPairingModal] = useState(false);
   const pendingActionRef = useRef<string | null>(null);
 
-  // Resolve backend URL
+  // Connection error modal
+  const [showConnErrorModal, setShowConnErrorModal] = useState(false);
+
   useEffect(() => {
     void getApiBaseUrl().then(url => setApiBaseUrlState(url));
   }, []);
 
-  // Start connection on mount — calls real native modules per protocol
+  // ─── Connect in background ────────────────────────────────────────────────
+
+  const handleRetry = useCallback(() => {
+    setShowConnErrorModal(false);
+    setConnStatus('connecting');
+    void connection.connect({ protocol, address, brand, layoutId }).then((success) => {
+      setConnStatus(success ? 'connected' : 'error');
+      if (!success) setShowConnErrorModal(true);
+    });
+  }, [connection, protocol, address, brand, layoutId]);
+
   useEffect(() => {
-    const params: ConnectParams = { protocol, address, brand, layoutId };
-    void connection.connect(params).then((success) => {
-      if (success) {
-        setPhase('layout');
-      }
+    void connection.connect({ protocol, address, brand, layoutId } as ConnectParams).then((success) => {
+      setConnStatus(success ? 'connected' : 'error');
+      if (!success) setShowConnErrorModal(true);
     });
     return () => { connection.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Pre-establish WebSocket/pairing after layout selection
+  // ─── Post-connect TV setup (WebSocket / pairing check) ───────────────────
+
   useEffect(() => {
-    if (phase !== 'remote') return;
+    if (connStatus !== 'connected') return;
     if (isAndroidTV) {
       void AndroidTV.isPaired(address).then(paired => {
         if (!paired) setShowPairingModal(true);
@@ -140,14 +151,16 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
       });
       return () => { cancelled = true; SamsungTizen.disconnect(address); };
     }
-  }, [phase, isAndroidTV, isSamsungTV, address]);
+  }, [connStatus, isAndroidTV, isSamsungTV, address]);
 
-  // Layout sections based on selected variant
+  // ─── Layout sections ──────────────────────────────────────────────────────
+
   const universalFallback = DEVICE_TYPE_TO_LAYOUT[deviceType] ?? 'universal-tv';
   const effectiveLayoutId = selectedLayout === 'brand' ? layoutId : selectedLayout === 'simple' ? undefined : layoutId;
   const sections = toRemoteLayoutSections(effectiveLayoutId, universalFallback);
 
-  // Toast
+  // ─── Toast ────────────────────────────────────────────────────────────────
+
   const showToast = useCallback((message: string, ok: boolean) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ message, ok });
@@ -158,7 +171,8 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
     ]).start(() => setToast(null));
   }, [toastAnim]);
 
-  // Button handler — protocol-aware command dispatch
+  // ─── Button handler ───────────────────────────────────────────────────────
+
   const handleButtonPress = useCallback(async (action: string) => {
     showToast(`⏳ ${action}`, true);
     try {
@@ -185,12 +199,9 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
       } else if (protocol === 'matter') {
         await MatterModule.invoke(address, action);
       } else if (protocol === 'wifi') {
-        // Generic Wi-Fi device (AirPlay, Roku, Chromecast, etc.)
-        // Try sending directly to the device, then fall back to the backend relay.
         let sent = false;
         const errors: string[] = [];
 
-        // 1. Direct device HTTP endpoint
         if (address) {
           try {
             const ctrl = new AbortController();
@@ -204,13 +215,11 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
             clearTimeout(timer);
             sent = directRes.ok;
             if (!sent) errors.push(`Device returned ${directRes.status}`);
-          } catch (e) {
-            errors.push(`Device unreachable`);
+          } catch {
+            errors.push('Device unreachable');
           }
         }
 
-        // 2. Backend relay — only attempt if URL points to a real host
-        //    (skip localhost / 127.x on physical devices where it's unreachable)
         if (!sent && apiBaseUrl && !/localhost|127\.0\.0\.\d/i.test(apiBaseUrl)) {
           try {
             const ctrl = new AbortController();
@@ -231,7 +240,7 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
 
         if (!sent) {
           throw new Error(
-            `Command not delivered — ${errors.join('; ') || 'no command channel configured for this device'}`,
+            `Command not delivered — ${errors.join('; ') || 'no command channel configured'}`,
           );
         }
       } else {
@@ -240,8 +249,7 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
       showToast(`✓ ${action}`, true);
     } catch (err) {
       console.log('Error sending command:', err);
-      const msg = err instanceof Error ? err.message : String(err);
-      showToast(msg, false);
+      showToast(err instanceof Error ? err.message : String(err), false);
     }
   }, [address, protocol, isSamsungTV, isAndroidTV, apiBaseUrl, showToast]);
 
@@ -252,101 +260,44 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
     if (pendingAction) void handleButtonPress(pendingAction);
   }, [handleButtonPress]);
 
-  // ─── Phase: Connecting ─────────────────────────────────────────────────────
+  // ─── Connection error message (from failed step) ────────────────────────
 
-  if (phase === 'connecting') {
-    return (
-      <View style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#0A0E1A" />
-        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
-          </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle} numberOfLines={1}>{deviceName}</Text>
-            <Text style={styles.headerSub}>Connecting via {protocol === 'wifi' ? 'Wi-Fi' : protocol.toUpperCase()}...</Text>
-          </View>
-          <View style={{ width: 22 }} />
+  const connErrorMessage = (() => {
+    const failedStep = [...connection.steps].reverse().find(s => s.status === 'error');
+    return failedStep?.error ?? 'Could not reach the device. Check that it is powered on and connected to the same network.';
+  })();
+
+  // ─── Header status indicator ──────────────────────────────────────────────
+
+  const renderStatus = () => {
+    if (connStatus === 'connecting') {
+      return (
+        <View style={styles.statusRow}>
+          <ActivityIndicator size="small" color="#8892A4" style={{ marginRight: 6 }} />
+          <Text style={styles.statusText}>Connecting...</Text>
         </View>
-
-        <ScrollView contentContainerStyle={styles.phaseContent}>
-          <ConnectionSteps steps={connection.steps} />
-          {connection.status === 'error' ? (
-            <>
-              <Text style={styles.errorLabel}>Connection failed</Text>
-              <TouchableOpacity
-                style={styles.retryBtn}
-                onPress={() => {
-                  void connection.connect({ protocol, address, brand, layoutId }).then((success) => {
-                    if (success) setPhase('layout');
-                  });
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.retryBtnText}>Retry</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <Text style={styles.connectingLabel}>Connecting...</Text>
-          )}
-        </ScrollView>
-
-        {/* Android TV pairing during connection flow */}
-        {connection.pairingRequest && (
-          <AndroidTVPairingModal
-            visible
-            deviceName={deviceName}
-            deviceIp={connection.pairingRequest.address}
-            onPaired={connection.resolvePairing}
-            onCancel={connection.rejectPairing}
-          />
-        )}
+      );
+    }
+    if (connStatus === 'error') {
+      return (
+        <View style={styles.statusRow}>
+          <View style={[styles.dot, { backgroundColor: '#FF4F4F' }]} />
+          <Text style={[styles.statusText, { color: '#FF4F4F' }]}>Failed</Text>
+          <TouchableOpacity onPress={() => setShowConnErrorModal(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.retryLink}>· Details</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return (
+      <View style={styles.statusRow}>
+        <View style={[styles.dot, { backgroundColor: '#00C9A7' }]} />
+        <ProtocolBadge protocol={protocol} />
       </View>
     );
-  }
+  };
 
-  // ─── Phase: Layout Selection ───────────────────────────────────────────────
-
-  if (phase === 'layout') {
-    return (
-      <View style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#0A0E1A" />
-        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
-          </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle} numberOfLines={1}>{deviceName}</Text>
-            <View style={styles.connectedRow}>
-              <Text style={styles.connectedText}>Connected ✓</Text>
-              <ProtocolBadge protocol={protocol} />
-            </View>
-          </View>
-          <View style={{ width: 22 }} />
-        </View>
-
-        <ScrollView contentContainerStyle={styles.phaseContent}>
-          <LayoutPicker
-            selected={selectedLayout}
-            brandName={brand}
-            onSelect={handleLayoutSelect}
-          />
-        </ScrollView>
-
-        <View style={[styles.phaseFooter, { paddingBottom: insets.bottom + 12 }]}>
-          <TouchableOpacity
-            style={styles.primaryBtn}
-            onPress={() => setPhase('remote')}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.primaryBtnText}>Continue →</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
-
-  // ─── Phase: Remote Control ─────────────────────────────────────────────────
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <View style={styles.container}>
@@ -358,23 +309,20 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
           <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle} numberOfLines={1}>{brand ? `${brand} ${deviceType.toUpperCase()}` : deviceName}</Text>
-          <View style={styles.connectedRow}>
-            <Text style={styles.layoutLabel}>{selectedLayout.charAt(0).toUpperCase() + selectedLayout.slice(1)}</Text>
-            <View style={styles.protocolDot}>
-              <View style={[styles.protocolDotInner, { backgroundColor: '#00C9A7' }]} />
-            </View>
-            <Text style={styles.protocolLabel}>{protocol === 'wifi' ? 'Wi-Fi' : protocol.toUpperCase()}</Text>
-          </View>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {brand ? `${brand} ${deviceType.toUpperCase()}` : deviceName}
+          </Text>
+          {renderStatus()}
         </View>
         <TouchableOpacity
-          onPress={() => setPhase('layout')}
+          onPress={() => setShowLayoutPicker(true)}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Ionicons name="settings-outline" size={20} color="#8892A4" />
+          <Ionicons name="grid-outline" size={20} color="#8892A4" />
         </TouchableOpacity>
       </View>
 
+      {/* Remote control */}
       <RemoteLayout sections={sections} onButtonPress={handleButtonPress} />
 
       {/* Toast */}
@@ -384,10 +332,82 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
         </Animated.View>
       )}
 
-      {/* Android TV pairing */}
-      {isAndroidTV && (
+      {/* Layout picker bottom sheet */}
+      <Modal
+        visible={showLayoutPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowLayoutPicker(false)}
+      >
+        <TouchableOpacity
+          style={styles.pickerOverlay}
+          activeOpacity={1}
+          onPress={() => setShowLayoutPicker(false)}
+        >
+          <View style={[styles.pickerSheet, { paddingBottom: insets.bottom + 16 }]}>
+            <View style={styles.pickerHandle} />
+            <LayoutPicker
+              selected={selectedLayout}
+              brandName={brand}
+              onSelect={handleLayoutSelect}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Connection error modal */}
+      <Modal
+        visible={showConnErrorModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowConnErrorModal(false)}
+      >
+        <View style={styles.errorModalOverlay}>
+          <View style={[styles.errorModalCard, { paddingBottom: insets.bottom + 20 }]}>
+            <View style={styles.errorModalIcon}>
+              <Ionicons name="wifi-outline" size={32} color="#FF4F4F" />
+            </View>
+            <Text style={styles.errorModalTitle}>Connection Failed</Text>
+            <Text style={styles.errorModalDevice} numberOfLines={1}>
+              {brand ? `${brand} ${deviceType.toUpperCase()}` : deviceName}
+            </Text>
+            <Text style={styles.errorModalAddress}>{address}</Text>
+            <View style={styles.errorModalDivider} />
+            <Text style={styles.errorModalMessage}>{connErrorMessage}</Text>
+            <TouchableOpacity
+              style={styles.errorModalRetryBtn}
+              onPress={handleRetry}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="refresh-outline" size={16} color="#0A0E1A" style={{ marginRight: 6 }} />
+              <Text style={styles.errorModalRetryText}>Try Again</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.errorModalBackBtn}
+              onPress={() => navigation.goBack()}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.errorModalBackText}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Android TV pairing — triggered by connection hook */}
+      {connection.pairingRequest != null && (
         <AndroidTVPairingModal
-          visible={showPairingModal}
+          visible
+          deviceName={deviceName}
+          deviceIp={connection.pairingRequest.address}
+          onPaired={connection.resolvePairing}
+          onCancel={connection.rejectPairing}
+        />
+      )}
+
+      {/* Android TV pairing — triggered post-connection (isPaired check / NOT_PAIRED error) */}
+      {isAndroidTV && showPairingModal && connection.pairingRequest == null && (
+        <AndroidTVPairingModal
+          visible
           deviceName={deviceName}
           deviceIp={address}
           onPaired={handlePaired}
@@ -426,97 +446,25 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  headerSub: {
-    fontSize: 12,
-    color: '#8892A4',
-    marginTop: 2,
-  },
-  connectedRow: {
+  statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     marginTop: 4,
   },
-  connectedText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#00C9A7',
-  },
-  layoutLabel: {
-    fontSize: 13,
-    fontWeight: '600',
+  statusText: {
+    fontSize: 12,
     color: '#8892A4',
   },
-  protocolDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  protocolDotInner: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  protocolLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#8892A4',
-  },
-  // Phases
-  phaseContent: {
-    padding: 20,
-    paddingBottom: 100,
-  },
-  connectingLabel: {
-    fontSize: 16,
-    fontWeight: '600',
+  retryLink: {
+    fontSize: 12,
     color: '#4FC3F7',
-    textAlign: 'center',
-    marginTop: 24,
-  },
-  errorLabel: {
-    fontSize: 16,
     fontWeight: '600',
-    color: '#FF4F4F',
-    textAlign: 'center',
-    marginTop: 24,
   },
-  retryBtn: {
-    backgroundColor: '#1E2535',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 16,
-    marginHorizontal: 40,
-  },
-  retryBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#4FC3F7',
-  },
-  phaseFooter: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    backgroundColor: '#0A0E1A',
-    borderTopWidth: 1,
-    borderTopColor: '#1E2535',
-  },
-  primaryBtn: {
-    backgroundColor: '#4FC3F7',
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  primaryBtnText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0A0E1A',
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
   },
   // Toast
   toast: {
@@ -539,4 +487,109 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     letterSpacing: 0.3,
   },
+  // Connection error modal
+  errorModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  errorModalCard: {
+    width: '100%',
+    backgroundColor: '#131929',
+    borderRadius: 20,
+    paddingTop: 28,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#1E2535',
+  },
+  errorModalIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255,79,79,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  errorModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 6,
+  },
+  errorModalDevice: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8892A4',
+  },
+  errorModalAddress: {
+    fontSize: 12,
+    color: '#4A5568',
+    marginTop: 2,
+    marginBottom: 12,
+  },
+  errorModalDivider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: '#1E2535',
+    marginBottom: 14,
+  },
+  errorModalMessage: {
+    fontSize: 13,
+    color: '#8892A4',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  errorModalRetryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4FC3F7',
+    borderRadius: 14,
+    paddingVertical: 14,
+    width: '100%',
+    marginBottom: 10,
+  },
+  errorModalRetryText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0A0E1A',
+  },
+  errorModalBackBtn: {
+    paddingVertical: 12,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  errorModalBackText: {
+    fontSize: 14,
+    color: '#8892A4',
+    fontWeight: '500',
+  },
+  // Layout picker sheet
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  pickerSheet: {
+    backgroundColor: '#131929',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 12,
+    paddingHorizontal: 20,
+  },
+  pickerHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#2A3348',
+    alignSelf: 'center',
+    marginBottom: 8,
+  },
 });
+

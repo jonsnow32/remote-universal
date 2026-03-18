@@ -328,9 +328,16 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
                 promise.resolve(null)
             } catch (e: Exception) {
                 val msg = e.message ?: "Unknown error"
-                if (msg.contains("ECONNRESET") || msg.contains("reset")) {
+                // SSL failures (cert mismatch after TV reset, protocol rejection, etc.)
+                // mean our saved cert is no longer accepted — clear it and force re-pair.
+                val needsRepair = msg.contains("ECONNRESET", ignoreCase = true)
+                    || msg.contains("reset", ignoreCase = true)
+                    || msg.contains("SSL", ignoreCase = true)
+                    || msg.contains("handshake", ignoreCase = true)
+                    || msg.contains("Failure in SSL", ignoreCase = true)
+                if (needsRepair) {
                     removePairedIp(ip)
-                    promise.reject("NOT_PAIRED", "TV rejected connection — please re-pair")
+                    promise.reject("NOT_PAIRED", "TV rejected the connection (SSL error) — please re-pair")
                 } else {
                     promise.reject("CONNECT_ERROR", msg, e)
                 }
@@ -491,6 +498,13 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
         val socket = ctx.socketFactory.createSocket() as SSLSocket
         socket.connect(InetSocketAddress(host, port), 10_000)
         socket.soTimeout = 10_000
+        // Android TV's ATVRS service (ports 6466/6467) only speaks TLS 1.2.
+        // Modern Android negotiates TLS 1.3 by default; the TV rejects it with
+        // "Failure in SSL library, usually a protocol error". Force TLS 1.2.
+        socket.enabledProtocols = socket.supportedProtocols
+            .filter { it == "TLSv1.2" || it == "TLSv1.1" }
+            .toTypedArray()
+            .takeIf { it.isNotEmpty() } ?: arrayOf("TLSv1.2")
         socket.startHandshake()
         return socket
     }

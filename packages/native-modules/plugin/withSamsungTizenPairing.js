@@ -1,17 +1,18 @@
 'use strict';
 
 /**
- * Expo config plugin — withAndroidTV
+ * Expo config plugin — withSamsungTizenPairing
  *
- * Wires the Android TV native module into the app during `expo prebuild`.
- * Two things happen:
- *   1. Kotlin source files  — copies AndroidTVModule.kt + AndroidTVPackage.kt into
- *                             the generated Android project source tree.
- *   2. MainApplication.kt  — adds the import and registers AndroidTVPackage in
- *                             getPackages().
+ * Wires the Samsung Tizen WSS pairing native module into the app during
+ * `expo prebuild`. Three things happen:
+ *   1. Kotlin source files — copies SamsungTizenPairingModule.kt,
+ *      SamsungTizenPairingPackage.kt, and LanSslConfigurator.kt from the
+ *      package's android/ folder into the generated Android project.
+ *   2. MainApplication.kt — adds the import and registers
+ *      SamsungTizenPairingPackage in getPackages().
  *
  * Usage in app.json:
- *   "plugins": ["@remote/native-modules/plugin/withAndroidTV"]
+ *   "plugins": ["@remote/native-modules/plugin/withSamsungTizenPairing"]
  */
 
 const { withMainApplication, withDangerousMod } = require('@expo/config-plugins');
@@ -19,12 +20,18 @@ const path = require('path');
 const fs = require('fs');
 
 const MODULE_PACKAGE = 'com.remoteplatform.nativemodules';
-const IMPORT_LINE = `import ${MODULE_PACKAGE}.AndroidTVPackage`;
+const IMPORT_LINE = `import ${MODULE_PACKAGE}.SamsungTizenPairingPackage`;
 
 const KOTLIN_SRC_DIR = path.resolve(__dirname, '..', 'android');
 
+const SAMSUNG_FILES = [
+  'SamsungTizenPairingModule.kt',
+  'SamsungTizenPairingPackage.kt',
+  'LanSslConfigurator.kt',
+];
+
 // ---------------------------------------------------------------------------
-// Helpers (same pattern as withIRBlaster)
+// Helpers
 // ---------------------------------------------------------------------------
 
 function addImport(contents, importLine) {
@@ -39,19 +46,20 @@ function addImport(contents, importLine) {
 }
 
 function addPackageRegistration(contents) {
-  if (contents.includes('add(AndroidTVPackage()')) return contents;
+  if (contents.includes('add(SamsungTizenPairingPackage()')) return contents;
 
   if (contents.includes('.packages.apply')) {
     return contents.replace(
       /\.packages\.apply\s*\{([\s\S]*?)\}/,
-      (_, body) => `.packages.apply {${body}        add(AndroidTVPackage())\n        }`
+      (_, body) =>
+        `.packages.apply {${body}        add(SamsungTizenPairingPackage())\n        }`
     );
   }
 
   if (contents.includes('PackageList(this).packages')) {
     return contents.replace(
       'PackageList(this).packages',
-      'PackageList(this).packages.apply {\n            add(AndroidTVPackage())\n        }'
+      'PackageList(this).packages.apply {\n            add(SamsungTizenPairingPackage())\n        }'
     );
   }
 
@@ -62,7 +70,7 @@ function addPackageRegistration(contents) {
 // Plugin steps
 // ---------------------------------------------------------------------------
 
-function withAndroidTVKotlinSources(config) {
+function withSamsungKotlinSources(config) {
   return withDangerousMod(config, [
     'android',
     (mod) => {
@@ -79,16 +87,11 @@ function withAndroidTVKotlinSources(config) {
 
       fs.mkdirSync(destDir, { recursive: true });
 
-      // Only copy the AndroidTV Kotlin files from this plugin.
-      const ktFiles = fs
-        .readdirSync(KOTLIN_SRC_DIR)
-        .filter((f) => f.startsWith('AndroidTV') && f.endsWith('.kt'));
-
-      for (const file of ktFiles) {
-        fs.copyFileSync(
-          path.join(KOTLIN_SRC_DIR, file),
-          path.join(destDir, file)
-        );
+      for (const file of SAMSUNG_FILES) {
+        const src = path.join(KOTLIN_SRC_DIR, file);
+        if (fs.existsSync(src)) {
+          fs.copyFileSync(src, path.join(destDir, file));
+        }
       }
 
       return mod;
@@ -96,7 +99,7 @@ function withAndroidTVKotlinSources(config) {
   ]);
 }
 
-function withAndroidTVMainApplication(config) {
+function withSamsungMainApplication(config) {
   return withMainApplication(config, (mod) => {
     let { contents } = mod.modResults;
     contents = addImport(contents, IMPORT_LINE);
@@ -110,10 +113,10 @@ function withAndroidTVMainApplication(config) {
 // Composed plugin
 // ---------------------------------------------------------------------------
 
-function withAndroidTV(config) {
-  config = withAndroidTVKotlinSources(config);
-  config = withAndroidTVMainApplication(config);
+function withSamsungTizenPairing(config) {
+  config = withSamsungKotlinSources(config);
+  config = withSamsungMainApplication(config);
   return config;
 }
 
-module.exports = withAndroidTV;
+module.exports = withSamsungTizenPairing;

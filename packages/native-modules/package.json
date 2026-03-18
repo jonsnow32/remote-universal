@@ -6,7 +6,8 @@
   "plugin": "./plugin/withIRBlaster.js",
   "plugins": {
     "withIRBlaster": "./plugin/withIRBlaster.js",
-    "withAndroidTV": "./plugin/withAndroidTV.js"
+    "withAndroidTV": "./plugin/withAndroidTV.js",
+    "withSamsungTizenPairing": "./plugin/withSamsungTizenPairing.js"
   },
   "scripts": {
     "build": "tsc --project tsconfig.json",

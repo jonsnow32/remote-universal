@@ -1,4 +1,4 @@
-package com.remoteplatform.universal
+package com.remoteplatform.nativemodules
 
 import okhttp3.OkHttpClient
 import java.security.SecureRandom
@@ -17,8 +17,8 @@ import javax.net.ssl.X509TrustManager
  * In React Native 0.81, WebSocketModule builds its own OkHttpClient and exposes
  * a static WebSocketModule.setCustomClientBuilder() hook — it does NOT use
  * OkHttpClientProvider. We register this configurator there in
- * MainApplication.onCreate() so every WebSocket connection to a LAN IP can
- * negotiate TLS with a self-signed certificate.
+ * SamsungTizenPairingModule.initialize() so every WebSocket connection to a LAN
+ * IP can negotiate TLS with a self-signed certificate.
  */
 object LanSslConfigurator {
 

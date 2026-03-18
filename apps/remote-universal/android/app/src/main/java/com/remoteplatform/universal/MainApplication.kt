@@ -12,11 +12,12 @@ import com.facebook.react.ReactHost
 import com.facebook.react.common.ReleaseLevel
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint
 import com.facebook.react.defaults.DefaultReactNativeHost
+
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
+import com.remoteplatform.nativemodules.SamsungTizenPairingPackage
 import com.remoteplatform.nativemodules.AndroidTVPackage
 import com.remoteplatform.nativemodules.IRBlasterPackage
-import com.remoteplatform.nativemodules.SamsungTizenPairingPackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -25,10 +26,12 @@ class MainApplication : Application(), ReactApplication {
       object : DefaultReactNativeHost(this) {
         override fun getPackages(): List<ReactPackage> =
             PackageList(this).packages.apply {
-              add(AndroidTVPackage())
-              add(IRBlasterPackage())
-              add(SamsungTizenPairingPackage())
-            }
+              // Packages that cannot be autolinked yet can be added manually here, for example:
+              // add(MyReactNativePackage())
+                    add(SamsungTizenPairingPackage())
+                add(AndroidTVPackage())
+                add(IRBlasterPackage())
+        }
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
 

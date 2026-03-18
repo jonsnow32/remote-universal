@@ -59,9 +59,17 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
         private val writeLock = Any()
 
         fun connect() {
+            android.util.Log.d("AndroidTV", "[$ip] connect() — opening remote session on port 6466")
             close()
             val cert = getOrGenerateCert()
-            val s = createTlsSocket(ip, 6466, cert.key, cert.cert)
+            android.util.Log.d("AndroidTV", "[$ip] cert loaded, creating TLS socket")
+            val s = try {
+                createTlsSocket(ip, 6466, cert.key, cert.cert)
+            } catch (e: Exception) {
+                android.util.Log.e("AndroidTV", "[$ip] TLS handshake failed: ${e.message}", e)
+                throw e
+            }
+            android.util.Log.d("AndroidTV", "[$ip] TLS socket connected")
             socket = s
             val out = s.outputStream
             val inp = s.inputStream
@@ -73,8 +81,10 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
             while (!ready && System.currentTimeMillis() < deadline) {
                 val msg = readDelimitedMessage(inp) ?: break
                 val fields = decodeMessage(msg)
+                android.util.Log.d("AndroidTV", "[$ip] handshake msg fields: ${fields.keys}")
                 when {
                     fields.containsKey(RMF_CONFIGURE) -> {
+                        android.util.Log.d("AndroidTV", "[$ip] → sending Configure")
                         out.write(buildRemoteMessage(mapOf(
                             RMF_CONFIGURE to V_MSG(buildRemoteConfigure()),
                         )))
@@ -82,12 +92,14 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
                         ready = true
                     }
                     fields.containsKey(RMF_SET_ACTIVE) -> {
+                        android.util.Log.d("AndroidTV", "[$ip] → sending SetActive")
                         out.write(buildRemoteMessage(mapOf(
                             RMF_SET_ACTIVE to V_MSG(varintField(1, 622)),
                         )))
                         out.flush()
                     }
                     fields.containsKey(RMF_PING) -> {
+                        android.util.Log.d("AndroidTV", "[$ip] → responding to Ping")
                         val pingFields = decodeMessage(
                             (fields[RMF_PING] as? ByteArray) ?: ByteArray(0)
                         )
@@ -100,9 +112,11 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
                 }
             }
             if (!ready) {
+                android.util.Log.e("AndroidTV", "[$ip] handshake timed out — TV did not send Configure")
                 close()
                 throw IOException("TV did not become ready for commands")
             }
+            android.util.Log.d("AndroidTV", "[$ip] handshake complete, session alive")
             alive = true
 
             // Background reader thread: handles ping/pong to keep the session alive.
@@ -127,9 +141,10 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
                             // Ignore other messages (SetActive, etc.)
                         }
                     }
-                } catch (_: Exception) {
-                    // Connection lost — mark dead so next sendKey reconnects.
+                } catch (e: Exception) {
+                    android.util.Log.w("AndroidTV", "[$ip] reader thread died: ${e.message}")
                 } finally {
+                    android.util.Log.d("AndroidTV", "[$ip] session closed")
                     alive = false
                 }
             }

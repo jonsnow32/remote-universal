@@ -53,7 +53,7 @@ function addImport(contents, importLine) {
  *   B) PackageList(this).packages  (no apply block yet)
  */
 function addPackageRegistration(contents) {
-  if (contents.includes('IRBlasterPackage')) return contents;
+  if (contents.includes('add(IRBlasterPackage()')) return contents;
 
   // Pattern A — apply block already present
   if (contents.includes('.packages.apply')) {
@@ -123,7 +123,7 @@ function withIRBlasterKotlinSources(config) {
 
       const ktFiles = fs
         .readdirSync(KOTLIN_SRC_DIR)
-        .filter((f) => f.endsWith('.kt'));
+        .filter((f) => f.startsWith('IRBlaster') && f.endsWith('.kt'));
 
       for (const file of ktFiles) {
         fs.copyFileSync(

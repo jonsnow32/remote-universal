@@ -7,16 +7,16 @@ import com.facebook.react.module.model.ReactModuleInfo
 import com.facebook.react.module.model.ReactModuleInfoProvider
 import com.facebook.react.uimanager.ViewManager
 
-class IRBlasterPackage : BaseReactPackage() {
+class SamsungTizenPairingPackage : BaseReactPackage() {
     override fun getModule(name: String, context: ReactApplicationContext): NativeModule? =
-        if (name == "IRBlaster") IRBlasterModule(context) else null
+        if (name == "SamsungTizenPairing") SamsungTizenPairingModule(context) else null
 
     override fun getReactModuleInfoProvider(): ReactModuleInfoProvider =
         ReactModuleInfoProvider {
             mapOf(
-                "IRBlaster" to ReactModuleInfo(
-                    "IRBlaster",
-                    IRBlasterModule::class.java.name,
+                "SamsungTizenPairing" to ReactModuleInfo(
+                    "SamsungTizenPairing",
+                    SamsungTizenPairingModule::class.java.name,
                     false, // canOverrideExistingModule
                     false, // needsEagerInit
                     false, // isCxxModule

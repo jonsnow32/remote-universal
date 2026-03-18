@@ -13,3 +13,4 @@ export {
   androidTvSendKey,
   androidTvUnpair,
 } from './AndroidTVModule';
+export { samsungTizenPairWithTV } from './SamsungTizenPairingModule';

@@ -1,63 +1,73 @@
-import { RemoteLayoutDefinition } from '@remote/core';
+import type { RemoteLayoutDefinition } from '@remote/core';
 
 /**
  * Universal Set-top Box / Cable Box layout.
  * Covers cable boxes, satellite receivers, OTT boxes (Apple TV, Android TV)
- * and IPTV receivers. Uses 4-column grid for denser navigation controls.
+ * and IPTV receivers.
  */
 export const universalSTBLayout: RemoteLayoutDefinition = {
   id: 'universal-stb',
   name: 'Set-top Box (Universal)',
-  columns: 4,
   sections: [
     // ── Power ───────────────────────────────────────────────────────────────
     {
       id: 'power',
-      buttons: [
-        { id: 'power-toggle', label: 'Power', icon: 'power', action: 'POWER_TOGGLE', row: 0, col: 1, colSpan: 2, variant: 'primary', size: 'lg' },
+      columns: 3,
+      rowHeight: 64,
+      widgets: [
+        { type: 'button', id: 'power-toggle', label: 'Power', icon: 'power', action: 'POWER_TOGGLE', row: 0, col: 1, variant: 'primary', size: 'lg' },
       ],
     },
 
-    // ── Volume + Channel ─────────────────────────────────────────────────────
+    // ── Vol rocker · DPad · Channel rocker ──────────────────────────────────
     {
-      id: 'vol-ch',
-      title: 'Volume / Channel',
-      buttons: [
-        { id: 'vol-up',   label: 'Vol +', icon: 'volume-high-outline', action: 'VOLUME_UP',    row: 0, col: 0 },
-        { id: 'ch-up',    label: 'Ch +',  icon: 'chevron-up',          action: 'CHANNEL_UP',   row: 0, col: 3 },
-        { id: 'mute',     label: 'Mute',  icon: 'volume-mute-outline', action: 'MUTE',         row: 1, col: 0, variant: 'ghost' },
-        { id: 'ch-prev',  label: 'Prev',  icon: 'return-down-back-outline', action: 'CHANNEL_PREV', row: 1, col: 3, variant: 'ghost' },
-        { id: 'vol-down', label: 'Vol −', icon: 'volume-low-outline',  action: 'VOLUME_DOWN',  row: 2, col: 0 },
-        { id: 'ch-down',  label: 'Ch −',  icon: 'chevron-down',        action: 'CHANNEL_DOWN', row: 2, col: 3 },
+      id: 'main-controls',
+      columns: 5,
+      rowHeight: 240,
+      widgets: [
+        {
+          type: 'rocker', id: 'volume', row: 0, col: 0,
+          upAction: 'VOLUME_UP', downAction: 'VOLUME_DOWN', midAction: 'MUTE',
+          upIcon: 'volume-high-outline', downIcon: 'volume-low-outline', midIcon: 'volume-mute-outline',
+          upLabel: 'Vol+', downLabel: 'Vol−', midLabel: 'Mute',
+        },
+        {
+          type: 'dpad', id: 'nav', row: 0, col: 1, colSpan: 3,
+          actions: { up: 'DPAD_UP', down: 'DPAD_DOWN', left: 'DPAD_LEFT', right: 'DPAD_RIGHT', center: 'DPAD_OK' },
+        },
+        {
+          type: 'rocker', id: 'channel', row: 0, col: 4,
+          upAction: 'CHANNEL_UP', downAction: 'CHANNEL_DOWN',
+          upIcon: 'chevron-up', downIcon: 'chevron-down',
+          upLabel: 'Ch+', downLabel: 'Ch−',
+        },
       ],
     },
 
-    // ── Navigation ──────────────────────────────────────────────────────────
+    // ── Search ───────────────────────────────────────────────────────────────
     {
-      id: 'navigation',
-      title: 'Navigation',
-      buttons: [
-        { id: 'nav-up',    label: '▲',  icon: 'chevron-up',      action: 'DPAD_UP',    row: 0, col: 1 },
-        { id: 'nav-left',  label: '◀',  icon: 'chevron-back',    action: 'DPAD_LEFT',  row: 1, col: 0 },
-        { id: 'nav-ok',    label: 'OK',                           action: 'DPAD_OK',    row: 1, col: 1, colSpan: 2, variant: 'primary' },
-        { id: 'nav-right', label: '▶',  icon: 'chevron-forward', action: 'DPAD_RIGHT', row: 1, col: 3 },
-        { id: 'nav-down',  label: '▼',  icon: 'chevron-down',    action: 'DPAD_DOWN',  row: 2, col: 1 },
+      id: 'search',
+      columns: 1,
+      rowHeight: 52,
+      widgets: [
+        { type: 'text-input', id: 'search-input', row: 0, col: 0, icon: 'search-outline', placeholder: 'Search channels & content…', action: 'SEARCH' },
       ],
     },
 
-    // ── Shortcut bar ─────────────────────────────────────────────────────────
+    // ── Controls ─────────────────────────────────────────────────────────────
     {
       id: 'shortcut',
       title: 'Controls',
-      buttons: [
-        { id: 'home',   label: 'Home',   icon: 'home-outline',               action: 'HOME',    row: 0, col: 0 },
-        { id: 'back',   label: 'Back',   icon: 'arrow-back-outline',         action: 'BACK',    row: 0, col: 1 },
-        { id: 'menu',   label: 'Menu',   icon: 'menu-outline',               action: 'MENU',    row: 0, col: 2 },
-        { id: 'guide',  label: 'Guide',  icon: 'grid-outline',               action: 'GUIDE',   row: 0, col: 3 },
-        { id: 'info',   label: 'Info',   icon: 'information-circle-outline', action: 'INFO',    row: 1, col: 0, variant: 'ghost' },
-        { id: 'search', label: 'Search', icon: 'search-outline',             action: 'SEARCH',  row: 1, col: 1, variant: 'ghost' },
-        { id: 'cc',     label: 'CC',     icon: 'text-outline',               action: 'CLOSED_CAPTION', row: 1, col: 2, variant: 'ghost' },
-        { id: 'settings', label: 'Settings', icon: 'settings-outline',      action: 'SETTINGS', row: 1, col: 3, variant: 'ghost' },
+      columns: 4,
+      rowHeight: 62,
+      widgets: [
+        { type: 'button', id: 'home',     label: 'Home',     icon: 'home-outline',               action: 'HOME',           row: 0, col: 0 },
+        { type: 'button', id: 'back',     label: 'Back',     icon: 'arrow-back-outline',         action: 'BACK',           row: 0, col: 1 },
+        { type: 'button', id: 'menu',     label: 'Menu',     icon: 'menu-outline',               action: 'MENU',           row: 0, col: 2 },
+        { type: 'button', id: 'guide',    label: 'Guide',    icon: 'grid-outline',               action: 'GUIDE',          row: 0, col: 3 },
+        { type: 'button', id: 'info',     label: 'Info',     icon: 'information-circle-outline', action: 'INFO',           row: 1, col: 0, variant: 'ghost' },
+        { type: 'button', id: 'cc',       label: 'CC',       icon: 'text-outline',               action: 'CLOSED_CAPTION', row: 1, col: 1, variant: 'ghost' },
+        { type: 'button', id: 'settings', label: 'Settings', icon: 'settings-outline',           action: 'SETTINGS',       row: 1, col: 3, variant: 'ghost' },
       ],
     },
 
@@ -65,15 +75,17 @@ export const universalSTBLayout: RemoteLayoutDefinition = {
     {
       id: 'playback',
       title: 'Playback',
-      buttons: [
-        { id: 'record',     label: 'Rec',   icon: 'radio-button-on-outline',   action: 'RECORD',       row: 0, col: 0, variant: 'danger' },
-        { id: 'rewind',     label: '◀◀',   icon: 'play-back-outline',         action: 'REWIND',       row: 0, col: 1 },
-        { id: 'play-pause', label: '▶‖',   icon: 'play-outline',              action: 'PLAY_PAUSE',   row: 0, col: 2, variant: 'primary' },
-        { id: 'fast-fwd',   label: '▶▶',   icon: 'play-forward-outline',      action: 'FAST_FORWARD', row: 0, col: 3 },
-        { id: 'stop',       label: 'Stop',  icon: 'stop-circle-outline',       action: 'STOP',         row: 1, col: 0, variant: 'ghost' },
-        { id: 'prev',       label: '|◀◀',  icon: 'play-skip-back-outline',    action: 'PREV',         row: 1, col: 1 },
-        { id: 'next',       label: '▶▶|',  icon: 'play-skip-forward-outline', action: 'NEXT',         row: 1, col: 2 },
-        { id: 'live',       label: 'Live',  icon: 'radio-outline',             action: 'LIVE_TV',      row: 1, col: 3 },
+      columns: 4,
+      rowHeight: 60,
+      widgets: [
+        { type: 'button', id: 'record',     label: 'Rec',   icon: 'radio-button-on-outline',    action: 'RECORD',       row: 0, col: 0, variant: 'danger' },
+        { type: 'button', id: 'rewind',     label: '◀◀',   icon: 'play-back-outline',           action: 'REWIND',       row: 0, col: 1 },
+        { type: 'button', id: 'play-pause', label: '▶‖',   icon: 'play-outline',                action: 'PLAY_PAUSE',   row: 0, col: 2, variant: 'primary' },
+        { type: 'button', id: 'fast-fwd',   label: '▶▶',   icon: 'play-forward-outline',        action: 'FAST_FORWARD', row: 0, col: 3 },
+        { type: 'button', id: 'stop',       label: 'Stop',  icon: 'stop-circle-outline',         action: 'STOP',         row: 1, col: 0, variant: 'ghost' },
+        { type: 'button', id: 'prev',       label: '|◀◀',  icon: 'play-skip-back-outline',      action: 'PREV',         row: 1, col: 1 },
+        { type: 'button', id: 'next',       label: '▶▶|',  icon: 'play-skip-forward-outline',   action: 'NEXT',         row: 1, col: 2 },
+        { type: 'button', id: 'live',       label: 'Live',  icon: 'radio-outline',               action: 'LIVE_TV',      row: 1, col: 3 },
       ],
     },
 
@@ -81,11 +93,13 @@ export const universalSTBLayout: RemoteLayoutDefinition = {
     {
       id: 'colour-buttons',
       title: 'Interactive',
-      buttons: [
-        { id: 'red',    label: 'Red',    action: 'BUTTON_RED',    row: 0, col: 0 },
-        { id: 'green',  label: 'Green',  action: 'BUTTON_GREEN',  row: 0, col: 1 },
-        { id: 'yellow', label: 'Yellow', action: 'BUTTON_YELLOW', row: 0, col: 2 },
-        { id: 'blue',   label: 'Blue',   action: 'BUTTON_BLUE',   row: 0, col: 3 },
+      columns: 4,
+      rowHeight: 56,
+      widgets: [
+        { type: 'button', id: 'red',    label: 'Red',    action: 'BUTTON_RED',    row: 0, col: 0 },
+        { type: 'button', id: 'green',  label: 'Green',  action: 'BUTTON_GREEN',  row: 0, col: 1 },
+        { type: 'button', id: 'yellow', label: 'Yellow', action: 'BUTTON_YELLOW', row: 0, col: 2 },
+        { type: 'button', id: 'blue',   label: 'Blue',   action: 'BUTTON_BLUE',   row: 0, col: 3 },
       ],
     },
   ],

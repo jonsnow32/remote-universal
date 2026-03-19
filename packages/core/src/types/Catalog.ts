@@ -244,7 +244,6 @@ export function parseCatalogLayout(layout: CatalogLayout): RemoteLayoutDefinitio
   return {
     id: layout.id,
     name: layout.name,
-    columns: layout.columns,
     sections: JSON.parse(layout.sections_json),
   };
 }

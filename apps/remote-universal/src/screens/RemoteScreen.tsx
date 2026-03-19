@@ -7,9 +7,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RemoteLayout } from '@remote/ui-kit';
 import { findLayout, SamsungTizen, SAMSUNG_UNAUTHORIZED, AndroidTV, ANDROID_TV_NOT_PAIRED } from '@remote/device-sdk';
 import { IRModule, BLEModule, HomeKitModule, MatterModule } from '@remote/native-modules';
-import type { DeviceType, LayoutSection, LayoutButton } from '@remote/core';
+import type { DeviceType, LayoutSection } from '@remote/core';
 import type { RemoteScreenProps, LayoutVariant } from '../types/navigation';
-import type { RemoteLayoutSection } from '@remote/ui-kit';
 import { appConfig } from '../config';
 import { getApiBaseUrl } from '../lib/apiUrl';
 import { AndroidTVPairingModal } from '../components/AndroidTVPairingModal';
@@ -30,25 +29,6 @@ const DEVICE_TYPE_TO_LAYOUT: Record<DeviceType, string> = {
   light:     'universal-light',
   stb:       'universal-stb',
 };
-
-function toRemoteLayoutSections(layoutId: string | undefined, fallbackId: string): RemoteLayoutSection[] {
-  const layout = findLayout(layoutId, fallbackId);
-  if (!layout) return [];
-  return layout.sections.map((section: LayoutSection) => ({
-    id: section.id,
-    title: section.title,
-    buttons: section.buttons.map((btn: LayoutButton) => ({
-      id: btn.id,
-      label: btn.label,
-      icon: btn.icon
-        ? <Ionicons name={btn.icon as React.ComponentProps<typeof Ionicons>['name']} size={18} color="#FFFFFF" />
-        : undefined,
-      action: btn.action,
-      variant: btn.variant === 'danger' ? 'ghost' : btn.variant,
-      size: btn.size,
-    })),
-  }));
-}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -157,7 +137,7 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
 
   const universalFallback = DEVICE_TYPE_TO_LAYOUT[deviceType] ?? 'universal-tv';
   const effectiveLayoutId = selectedLayout === 'brand' ? layoutId : selectedLayout === 'simple' ? undefined : layoutId;
-  const sections = toRemoteLayoutSections(effectiveLayoutId, universalFallback);
+  const sections: LayoutSection[] = findLayout(effectiveLayoutId, universalFallback)?.sections ?? [];
 
   // ─── Toast ────────────────────────────────────────────────────────────────
 

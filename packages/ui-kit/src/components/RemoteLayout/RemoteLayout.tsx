@@ -1,8 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import { RemoteButton } from '../RemoteButton/RemoteButton';
-import { useTheme } from '../../theme/ThemeProvider';
+import { View, Text, ScrollView } from 'react-native';
+import type { LayoutSection } from '@remote/core';
+import { SectionGrid } from './SectionGrid';
 
+// ─── Deprecated aliases kept for backward compatibility ───────────────────────
+/** @deprecated Use ButtonWidget from @remote/core */
 export interface RemoteLayoutButton {
   id: string;
   label: string;
@@ -11,68 +13,45 @@ export interface RemoteLayoutButton {
   variant?: 'primary' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
 }
-
+/** @deprecated Use LayoutSection from @remote/core */
 export interface RemoteLayoutSection {
   id: string;
   title?: string;
   buttons: RemoteLayoutButton[];
 }
+// ─────────────────────────────────────────────────────────────────────────────
 
 export interface RemoteLayoutProps {
-  sections: RemoteLayoutSection[];
+  sections: LayoutSection[];
   onButtonPress: (action: string) => void;
 }
 
-/**
- * Renders a remote control layout from a list of sections and buttons.
- */
 export function RemoteLayout({ sections, onButtonPress }: RemoteLayoutProps): React.ReactElement {
-  const theme = useTheme();
-
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      contentContainerStyle={{ paddingVertical: 12, paddingHorizontal: 0 }}
+      showsVerticalScrollIndicator={false}
+    >
       {sections.map(section => (
-        <View key={section.id} style={[styles.section, { marginBottom: theme.shape.spacing.lg }]}>
+        <View key={section.id} style={{ width: '100%', marginBottom: 16 }}>
           {section.title && (
-            <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary, fontSize: theme.typography.fontSize.xs }]}>
+            <Text
+              style={{
+                color: '#555E74',
+                fontSize: 10,
+                letterSpacing: 1.4,
+                fontWeight: '600',
+                paddingHorizontal: 16,
+                marginBottom: 6,
+              }}
+            >
               {section.title.toUpperCase()}
             </Text>
           )}
-          <View style={styles.buttonGrid}>
-            {section.buttons.map(btn => (
-              <RemoteButton
-                key={btn.id}
-                label={btn.label}
-                icon={btn.icon}
-                onPress={() => onButtonPress(btn.action)}
-                variant={btn.variant ?? 'ghost'}
-                size={btn.size ?? 'md'}
-              />
-            ))}
-          </View>
+          <SectionGrid section={section} onAction={onButtonPress} />
         </View>
       ))}
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    padding: 16,
-    alignItems: 'center',
-  },
-  section: {
-    width: '100%',
-    alignItems: 'center',
-  },
-  sectionTitle: {
-    letterSpacing: 1.5,
-    marginBottom: 8,
-  },
-  buttonGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 8,
-  },
-});

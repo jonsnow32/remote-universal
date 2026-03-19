@@ -310,7 +310,7 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle} numberOfLines={1}>
-            {brand ? `${brand} ${deviceType.toUpperCase()}` : deviceName}
+            {`${deviceName} ${deviceType.toUpperCase()}`}
           </Text>
           {renderStatus()}
         </View>

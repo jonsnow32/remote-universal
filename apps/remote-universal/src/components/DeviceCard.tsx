@@ -29,7 +29,7 @@ export function DeviceCard({ name, location, protocol, category = 'tv', onPress 
         <Ionicons name={meta.icon} size={22} color={meta.color} />
       </View>
       <View style={styles.info}>
-        <Text style={styles.name} numberOfLines={1}>{name}</Text>
+        <Text style={styles.name} numberOfLines={2}>{name}</Text>
         <Text style={styles.location}>{location}</Text>
       </View>
       <ProtocolBadge protocol={protocol} />

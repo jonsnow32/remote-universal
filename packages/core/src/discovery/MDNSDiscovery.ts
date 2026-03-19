@@ -111,7 +111,7 @@ export class MDNSDiscovery {
             results.push({
               id,
               address,
-              name: service.txt?.fn ?? service.fullName ?? service.name,
+              name:   service.name ?? service.fullName ?? service.txt?.fn ,
               source: 'mdns',
               type: deviceType,
             });

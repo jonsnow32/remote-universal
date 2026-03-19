@@ -82,8 +82,12 @@ export class SamsungTizen {
    * Open a persistent WebSocket to the TV.
    * Tries WSS port 8002 first; falls back to WS port 8001.
    * Resolves once `ms.channel.connect` is received (TV is ready for keys).
+   *
+   * @param onUnauthorized  Called as soon as the TV sends `ms.channel.unauthorized`
+   *                        (i.e. the Allow popup just appeared on the TV screen).
+   *                        Use this to show a guiding modal in the UI.
    */
-  static async connect(ip: string): Promise<void> {
+  static async connect(ip: string, onUnauthorized?: () => void): Promise<void> {
     // Already connected?
     if (SamsungTizen.sessions.has(ip) && SamsungTizen.readySessions.has(ip)) return;
 
@@ -91,14 +95,14 @@ export class SamsungTizen {
     const inflight = SamsungTizen.connecting.get(ip);
     if (inflight) return inflight;
 
-    const p = SamsungTizen.connectInner(ip).finally(() => {
+    const p = SamsungTizen.connectInner(ip, onUnauthorized).finally(() => {
       SamsungTizen.connecting.delete(ip);
     });
     SamsungTizen.connecting.set(ip, p);
     return p;
   }
 
-  private static async connectInner(ip: string): Promise<void> {
+  private static async connectInner(ip: string, onUnauthorized?: () => void): Promise<void> {
 
     // Close stale session if any.
     SamsungTizen.disconnectSync(ip);
@@ -145,7 +149,7 @@ export class SamsungTizen {
       // With an existing token (reconnect): first port gets 30s, fallback 10s.
       const retryMs = i === 0 || !storedToken ? 30_000 : 10_000;
       try {
-        await SamsungTizen.tryConnect(ip, port, storedToken, deviceId, retryMs);
+        await SamsungTizen.tryConnect(ip, port, storedToken, deviceId, retryMs, onUnauthorized);
         // Cache the working port.
         void AsyncStorage.setItem(PORT_PREFIX + ip, String(port));
         return;
@@ -158,7 +162,7 @@ export class SamsungTizen {
           console.log('[SamsungTizen] Stale token — clearing and re-pairing...');
           await AsyncStorage.removeItem(TOKEN_PREFIX + ip);
           await AsyncStorage.removeItem(PORT_PREFIX + ip);
-          return SamsungTizen.connectInner(ip);
+          return SamsungTizen.connectInner(ip, onUnauthorized);
         }
       }
     }
@@ -172,10 +176,10 @@ export class SamsungTizen {
    * With token: single attempt, fail fast on unauthorized (stale token).
    * Without token: retry every 2s until ms.channel.connect or deadline (popup flow).
    */
-  private static tryConnect(ip: string, port: number, token: string | null, deviceId: string, retryMs = 30_000): Promise<void> {
+  private static tryConnect(ip: string, port: number, token: string | null, deviceId: string, retryMs = 30_000, onUnauthorized?: () => void): Promise<void> {
     if (token) {
       // Have a token — single attempt. Unauthorized means stale token; don't retry.
-      return SamsungTizen.tryConnectOnce(ip, port, token, Math.min(retryMs, 10_000), deviceId);
+      return SamsungTizen.tryConnectOnce(ip, port, token, Math.min(retryMs, 10_000), deviceId, onUnauthorized);
     }
     // No token — retry every 2s until the TV shows the popup and user clicks Allow.
     return new Promise<void>((resolve, reject) => {
@@ -189,7 +193,7 @@ export class SamsungTizen {
         }
 
         const remaining = deadline - Date.now();
-        SamsungTizen.tryConnectOnce(ip, port, null, remaining, deviceId)
+        SamsungTizen.tryConnectOnce(ip, port, null, remaining, deviceId, onUnauthorized)
           .then(resolve)
           .catch((err) => {
             const msg = err instanceof Error ? err.message : String(err);
@@ -215,7 +219,7 @@ export class SamsungTizen {
    * user clicks Allow. If the TV itself closes the WS, onclose fires and we
    * settle with SAMSUNG_UNAUTHORIZED so the caller's retry loop can reconnect.
    */
-  private static tryConnectOnce(ip: string, port: number, token: string | null, timeoutMs: number, deviceId: string): Promise<void> {
+  private static tryConnectOnce(ip: string, port: number, token: string | null, timeoutMs: number, deviceId: string, onUnauthorized?: () => void): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const url = SamsungTizen.buildUrl(ip, port, token, deviceId);
       console.log(`[SamsungTizen] Connecting ${port === 8002 ? 'WSS' : 'WS'} port ${port}, token: ${token ? 'yes' : 'none'}, deviceId: ${deviceId}`);
@@ -224,6 +228,14 @@ export class SamsungTizen {
       const ws = new WebSocket(url);
       let settled = false;
       let gotUnauthorized = false;
+      // Ensure onUnauthorized fires at most once regardless of which trigger fires first.
+      let firedUnauthorized = false;
+      const fireUnauthorized = () => {
+        if (!firedUnauthorized) {
+          firedUnauthorized = true;
+          onUnauthorized?.();
+        }
+      };
 
       const settle = (err?: Error) => {
         if (settled) return;
@@ -250,6 +262,11 @@ export class SamsungTizen {
 
       ws.onopen = () => {
         console.log(`[SamsungTizen] WS open port ${port}, waiting for TV handshake...`);
+        // No token means the TV will show an Allow popup immediately after the WS opens.
+        // Fire the callback now so the UI guide appears before the popup can disappear.
+        if (!token) {
+          fireUnauthorized();
+        }
       };
 
       ws.onmessage = (event) => {
@@ -276,7 +293,12 @@ export class SamsungTizen {
           } else if (msg.event === 'ms.channel.unauthorized') {
             // DON'T close the WS! Older TVs keep it open and will send
             // ms.channel.connect on this same socket after user clicks Allow.
-            gotUnauthorized = true;
+            if (!gotUnauthorized) {
+              gotUnauthorized = true;
+              // For the stale-token case this is the first trigger; for the no-token
+              // case fireUnauthorized() is a no-op (already fired on ws.onopen).
+              fireUnauthorized();
+            }
             console.log('[SamsungTizen] Unauthorized on port', port, '— keeping WS open, waiting for Allow...');
           }
         } catch {

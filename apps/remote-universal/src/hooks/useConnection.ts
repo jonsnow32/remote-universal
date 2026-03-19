@@ -26,6 +26,8 @@ export interface ConnectParams {
   address: string;
   brand?: string;
   layoutId?: string;
+  /** Called when a Samsung TV sends ms.channel.unauthorized (Allow popup visible on TV). */
+  onSamsungUnauthorized?: () => void;
 }
 
 /** Exposed when the connection flow needs the user to complete a pairing step. */
@@ -49,6 +51,7 @@ function buildWiFiSteps(
   brand?: string,
   layoutId?: string,
   requestPairing?: (addr: string) => Promise<void>,
+  onSamsungUnauthorized?: () => void,
 ): StepDef[] {
   const brandLower = brand?.toLowerCase() ?? '';
   const isSamsung = brandLower === 'samsung';
@@ -92,7 +95,7 @@ function buildWiFiSteps(
         run: async () => {
           // Opens WSS (port 8002) or falls back to WS (port 8001).
           // If first-time, the TV shows an "Allow" popup the user must accept.
-          await SamsungTizen.connect(address);
+          await SamsungTizen.connect(address, onSamsungUnauthorized);
         },
       },
       {
@@ -322,7 +325,7 @@ export function useConnection() {
     let defs: StepDef[];
     switch (protocol) {
       case 'wifi':
-        defs = buildWiFiSteps(address, brand, layoutId, triggerPairing);
+        defs = buildWiFiSteps(address, brand, layoutId, triggerPairing, params.onSamsungUnauthorized);
         break;
       case 'ir':
         defs = buildIRSteps();

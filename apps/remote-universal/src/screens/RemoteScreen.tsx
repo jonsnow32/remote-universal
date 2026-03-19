@@ -1,17 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, View, Text, TouchableOpacity, StyleSheet, StatusBar, Alert, Modal, ActivityIndicator } from 'react-native';
+import { Animated, View, Text, TouchableOpacity, StyleSheet, StatusBar, Modal, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RemoteLayout } from '@remote/ui-kit';
-import { findLayout, SamsungTizen, SAMSUNG_UNAUTHORIZED, AndroidTV, ANDROID_TV_NOT_PAIRED } from '@remote/device-sdk';
+import { findLayout, SamsungTizen, AndroidTV, ANDROID_TV_NOT_PAIRED } from '@remote/device-sdk';
 import { IRModule, BLEModule, HomeKitModule, MatterModule } from '@remote/native-modules';
 import type { DeviceType, LayoutSection } from '@remote/core';
 import type { RemoteScreenProps, LayoutVariant } from '../types/navigation';
 import { appConfig } from '../config';
 import { getApiBaseUrl } from '../lib/apiUrl';
 import { AndroidTVPairingModal } from '../components/AndroidTVPairingModal';
+import { SamsungTVAllowModal } from '../components/SamsungTVAllowModal';
 import { LayoutPicker } from '../components/LayoutPicker';
 import { useConnection } from '../hooks/useConnection';
 import type { ConnectParams } from '../hooks/useConnection';
@@ -82,6 +83,9 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
   const [showPairingModal, setShowPairingModal] = useState(false);
   const pendingActionRef = useRef<string | null>(null);
 
+  // Samsung TV "Allow" guidance modal (shown on ms.channel.unauthorized)
+  const [showSamsungAllowModal, setShowSamsungAllowModal] = useState(false);
+
   // Connection error modal
   const [showConnErrorModal, setShowConnErrorModal] = useState(false);
 
@@ -93,15 +97,24 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
 
   const handleRetry = useCallback(() => {
     setShowConnErrorModal(false);
+    setShowSamsungAllowModal(false);
     setConnStatus('connecting');
-    void connection.connect({ protocol, address, brand, layoutId }).then((success) => {
+    void connection.connect({
+      protocol, address, brand, layoutId,
+      onSamsungUnauthorized: () => setShowSamsungAllowModal(true),
+    }).then((success) => {
+      setShowSamsungAllowModal(false);
       setConnStatus(success ? 'connected' : 'error');
       if (!success) setShowConnErrorModal(true);
     });
   }, [connection, protocol, address, brand, layoutId]);
 
   useEffect(() => {
-    void connection.connect({ protocol, address, brand, layoutId } as ConnectParams).then((success) => {
+    void connection.connect({
+      protocol, address, brand, layoutId,
+      onSamsungUnauthorized: () => setShowSamsungAllowModal(true),
+    } as ConnectParams).then((success) => {
+      setShowSamsungAllowModal(false);
       setConnStatus(success ? 'connected' : 'error');
       if (!success) setShowConnErrorModal(true);
     });
@@ -120,18 +133,7 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
       });
       return () => { void AndroidTV.disconnectRemote(address).catch(() => {}); };
     }
-    if (isSamsungTV) {
-      let cancelled = false;
-      void SamsungTizen.connect(address).catch((err) => {
-        if (cancelled) return;
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg === SAMSUNG_UNAUTHORIZED) {
-          Alert.alert('Samsung TV pairing', 'Please check your TV screen for an "Allow" popup and accept it.');
-        }
-      });
-      return () => { cancelled = true; SamsungTizen.disconnect(address); };
-    }
-  }, [connStatus, isAndroidTV, isSamsungTV, address]);
+  }, [connStatus, isAndroidTV, address]);
 
   // ─── Layout sections ──────────────────────────────────────────────────────
 
@@ -372,6 +374,15 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
           </View>
         </View>
       </Modal>
+
+      {/* Samsung TV "Allow" guidance modal */}
+      <SamsungTVAllowModal
+        visible={showSamsungAllowModal}
+        onDismiss={() => {
+          setShowSamsungAllowModal(false);
+          SamsungTizen.disconnect(address);
+        }}
+      />
 
       {/* Android TV pairing — triggered by connection hook */}
       {connection.pairingRequest != null && (

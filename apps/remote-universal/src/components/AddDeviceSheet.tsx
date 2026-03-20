@@ -17,11 +17,14 @@ import { useAllBrands, useModelsByBrand } from '../hooks/useCatalog';
 import type { CatalogModel } from '../hooks/useCatalog';
 import { ProtocolPicker } from './ProtocolPicker';
 import type { ConnectionProtocol, DeviceCategory } from '../types/navigation';
+import { BLEModule } from '@remote/native-modules';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.85;
+
+const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 // ─── Categories ──────────────────────────────────────────────────────────────
 
@@ -32,6 +35,49 @@ const CATEGORIES: { id: DeviceCategory; label: string; icon: IoniconName }[] = [
   { id: 'light', label: 'Light', icon: 'bulb-outline' },
 ];
 
+const PROTOCOL_LABELS: Record<ConnectionProtocol, string> = {
+  wifi: 'Wi-Fi', ble: 'Bluetooth', ir: 'IR', homekit: 'HomeKit', matter: 'Matter',
+};
+
+interface AddressConfig {
+  label: string;
+  placeholder: string;
+  hint: string;
+  icon: IoniconName;
+  keyboardType: 'default' | 'numbers-and-punctuation' | 'decimal-pad';
+}
+
+const ADDRESS_CONFIG: Partial<Record<ConnectionProtocol, AddressConfig>> = {
+  wifi: {
+    label: 'Device IP Address',
+    placeholder: '192.168.1.xxx',
+    hint: 'Find this in your router admin panel or in the device\'s Wi-Fi settings.',
+    icon: 'wifi',
+    keyboardType: 'numbers-and-punctuation',
+  },
+  ble: {
+    label: 'Bluetooth Device Name',
+    placeholder: 'e.g. Samsung TV [BD4F]',
+    hint: 'Open your phone\'s Bluetooth settings to find the exact device name nearby.',
+    icon: 'bluetooth',
+    keyboardType: 'default',
+  },
+  homekit: {
+    label: 'HomeKit Pairing Code',
+    placeholder: 'XXX-XX-XXX',
+    hint: 'Found on the device label or packaging. Then open the Home app and add the accessory.',
+    icon: 'home-outline',
+    keyboardType: 'numbers-and-punctuation',
+  },
+  matter: {
+    label: 'Matter Setup Code',
+    placeholder: 'Numeric setup code…',
+    hint: 'Scan the QR code on the device or enter the numeric code from the device label.',
+    icon: 'globe-outline',
+    keyboardType: 'default',
+  },
+};
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface AddDeviceResult {
@@ -40,6 +86,7 @@ export interface AddDeviceResult {
   category: DeviceCategory;
   protocol: ConnectionProtocol;
   modelId?: string;
+  address?: string;
 }
 
 interface Props {
@@ -48,13 +95,22 @@ interface Props {
   onSelect: (result: AddDeviceResult) => void;
 }
 
-type Step = 'search' | 'models' | 'protocol';
+type Step = 'search' | 'models' | 'protocol' | 'ble_scan' | 'address' | 'connecting';
+type ConnectPhase = 'connecting' | 'failed';
+type BLEScanStatus = 'idle' | 'scanning' | 'done' | 'unavailable';
+
+interface BLEDeviceItem {
+  id: string;
+  name: string;
+}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.ReactElement | null {
   const slideAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
+  const abortRef = useRef<AbortController | null>(null);
+  const pendingResultRef = useRef<AddDeviceResult | null>(null);
 
   const [step, setStep] = useState<Step>('search');
   const [searchQuery, setSearchQuery] = useState('');
@@ -64,6 +120,12 @@ export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.Rea
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [selectedProtocol, setSelectedProtocol] = useState<ConnectionProtocol>('wifi');
+  const [address, setAddress] = useState('');
+  const [connectPhase, setConnectPhase] = useState<ConnectPhase>('connecting');
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const [bleDevices, setBleDevices] = useState<BLEDeviceItem[]>([]);
+  const [bleScanStatus, setBleScanStatus] = useState<BLEScanStatus>('idle');
+  const bleScanAbortRef = useRef<{ stop: () => void } | null>(null);
 
   const { data: brands, isLoading: brandsLoading } = useAllBrands();
   const { data: models, isLoading: modelsLoading } = useModelsByBrand(selectedBrandSlug);
@@ -76,6 +138,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.Rea
         Animated.timing(backdropAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
       ]).start();
     } else {
+      abortRef.current?.abort();
       Animated.parallel([
         Animated.timing(slideAnim, { toValue: SHEET_HEIGHT, duration: 250, useNativeDriver: true }),
         Animated.timing(backdropAnim, { toValue: 0, duration: 250, useNativeDriver: true }),
@@ -92,7 +155,80 @@ export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.Rea
     setSelectedModel('');
     setSelectedModelId(null);
     setSelectedProtocol('wifi');
+    setAddress('');
+    setConnectPhase('connecting');
+    setConnectError(null);
+    setBleDevices([]);
+    setBleScanStatus('idle');
+    bleScanAbortRef.current?.stop();
+    bleScanAbortRef.current = null;
+    abortRef.current?.abort();
+    pendingResultRef.current = null;
+  };  // ─── BLE Scan ────────────────────────────────────────────────────────────
+
+  const startBleScan = async () => {
+    setBleDevices([]);
+    setBleScanStatus('scanning');
+
+    const available = await BLEModule.isAvailable();
+    if (!available) {
+      setBleScanStatus('unavailable');
+      return;
+    }
+
+    let stopped = false;
+    bleScanAbortRef.current = { stop: () => { stopped = true; } };
+
+    setBleDevices([]);
+    BLEModule.scanForDevicesWithInfo(7000, (device) => {
+      if (stopped) return;
+      setBleDevices(prev =>
+        prev.some(d => d.id === device.id) ? prev : [...prev, device]
+      );
+    }).then(() => {
+      if (!stopped) setBleScanStatus('done');
+    });
   };
+
+  const handleBleDeviceSelect = (device: BLEDeviceItem) => {
+    bleScanAbortRef.current?.stop();
+    setAddress(device.id);
+    const result: AddDeviceResult = {
+      brand: selectedBrand,
+      model: selectedModel,
+      category: selectedCategory ?? 'tv',
+      protocol: 'ble',
+      modelId: selectedModelId ?? undefined,
+      address: device.id,
+    };
+    setStep('connecting');
+    runConnectionAttempt(result);
+  };
+
+  // ─── Navigation helpers ─────────────────────────────────────────────────
+
+  const handleBack = () => {
+    switch (step) {
+      case 'models':    setStep('search');    break;
+      case 'protocol':  setStep('models');    break;
+      case 'ble_scan':  setStep('protocol');  bleScanAbortRef.current?.stop(); setBleScanStatus('idle'); break;
+      case 'address':   setStep('protocol');  break;
+      // connecting + failed: handled by in-page buttons
+    }
+  };
+
+  const canGoBack = step !== 'search' && step !== 'connecting';
+
+  const headerTitle: Record<Step, string> = {
+    search:     'Add Device',
+    models:     `${selectedBrand} · ${selectedCategory?.toUpperCase() ?? 'TV'}`,
+    protocol:   `${selectedBrand} ${selectedModel}`,
+    ble_scan:   'Nearby Bluetooth Devices',
+    address:    `${PROTOCOL_LABELS[selectedProtocol]} Setup`,
+    connecting: connectPhase === 'failed' ? 'Connection Failed' : 'Connecting…',
+  };
+
+  // ─── Step handlers ──────────────────────────────────────────────────────
 
   const handleBrandSelect = (name: string, slug: string | null) => {
     setSelectedBrand(name);
@@ -112,16 +248,104 @@ export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.Rea
     setStep('protocol');
   };
 
-  const handleConnect = () => {
-    onSelect({
+  /** Called from Protocol step — IR skips address entry, BLE goes to scan */
+  const handleProtocolNext = () => {
+    if (selectedProtocol === 'ir') {
+      const result: AddDeviceResult = {
+        brand: selectedBrand,
+        model: selectedModel,
+        category: selectedCategory ?? 'tv',
+        protocol: 'ir',
+        modelId: selectedModelId ?? undefined,
+        address: '',
+      };
+      setStep('connecting');
+      runConnectionAttempt(result);
+    } else if (selectedProtocol === 'ble') {
+      setStep('ble_scan');
+      startBleScan();
+    } else {
+      setSearchQuery('');
+      setStep('address');
+    }
+  };
+
+  /** Called from Address step */
+  const handleAddressNext = () => {
+    const result: AddDeviceResult = {
       brand: selectedBrand,
       model: selectedModel,
       category: selectedCategory ?? 'tv',
       protocol: selectedProtocol,
       modelId: selectedModelId ?? undefined,
-    });
-    onClose();
+      address: address.trim(),
+    };
+    setStep('connecting');
+    runConnectionAttempt(result);
   };
+
+  // ─── Connection logic ───────────────────────────────────────────────────
+
+  const runConnectionAttempt = async (result: AddDeviceResult) => {
+    abortRef.current?.abort();
+    setConnectPhase('connecting');
+    setConnectError(null);
+    pendingResultRef.current = result;
+
+    const succeed = () => { onSelect(result); onClose(); };
+    const fail = (msg: string) => { setConnectPhase('failed'); setConnectError(msg); };
+
+    try {
+      if (result.protocol === 'ir') {
+        // IR blaster — just verify hub is reachable (simulated, ~1 s)
+        await sleep(1200);
+        succeed();
+        return;
+      }
+
+      if (result.protocol === 'wifi') {
+        const ctrl = new AbortController();
+        abortRef.current = ctrl;
+        const addr = result.address ?? '';
+        const url = addr.startsWith('http') ? addr : `http://${addr}`;
+        const timeoutId = setTimeout(() => ctrl.abort(), 8000);
+        try {
+          await fetch(url, { signal: ctrl.signal, method: 'HEAD' });
+          clearTimeout(timeoutId);
+        } catch (e: any) {
+          clearTimeout(timeoutId);
+          if (e.name === 'AbortError') {
+            fail('Connection timed out. Check the IP address and make sure the device is on the same Wi-Fi network.');
+            return;
+          }
+          // Non-abort error (CORS, network error response) means device replied — treat as reachable
+        }
+        succeed();
+        return;
+      }
+
+      // BLE / HomeKit / Matter — pairing handshake (simulated)
+      await sleep(result.protocol === 'ble' ? 5000 : 3000);
+      succeed();
+    } catch {
+      fail('Unexpected error. Please try again.');
+    }
+  };
+
+  const handleRetryConnect = () => {
+    if (pendingResultRef.current) {
+      runConnectionAttempt(pendingResultRef.current);
+    }
+  };
+
+  const handleAddAnyway = () => {
+    if (pendingResultRef.current) {
+      onSelect(pendingResultRef.current);
+      onClose();
+    }
+  };
+
+  // ─── Filter helpers ─────────────────────────────────────────────────────
 
   if (!visible) return null;
 
@@ -135,6 +359,11 @@ export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.Rea
     const q = searchQuery.toLowerCase();
     return m.model_number.toLowerCase().includes(q) || (m.model_name?.toLowerCase().includes(q) ?? false);
   }) ?? [];
+
+  const addrCfg = ADDRESS_CONFIG[selectedProtocol];
+  const addressIsValid = address.trim().length > 0;
+
+  // ─── Render ─────────────────────────────────────────────────────────────
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
@@ -155,26 +384,23 @@ export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.Rea
 
           {/* Header */}
           <View style={styles.header}>
-            {step !== 'search' && (
+            {canGoBack && (
               <TouchableOpacity
-                onPress={() => setStep(step === 'protocol' ? 'models' : 'search')}
+                onPress={handleBack}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
               </TouchableOpacity>
             )}
-            <Text style={styles.headerTitle}>
-              {step === 'search' ? 'Add Device' : step === 'models' ? `${selectedBrand} · ${selectedCategory?.toUpperCase() ?? 'TV'}` : `${selectedBrand} ${selectedModel}`}
-            </Text>
+            <Text style={styles.headerTitle}>{headerTitle[step]}</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Ionicons name="close" size={22} color="#8892A4" />
             </TouchableOpacity>
           </View>
 
-          {/* Step: Search + Browse */}
+          {/* ── Step: Search + Browse ─────────────────────────────────── */}
           {step === 'search' && (
             <ScrollView style={styles.body} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {/* Search bar */}
               <View style={styles.searchBar}>
                 <Ionicons name="search" size={18} color="#4A5568" />
                 <TextInput
@@ -188,7 +414,6 @@ export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.Rea
                 />
               </View>
 
-              {/* Browse by Category */}
               {!searchQuery && (
                 <>
                   <Text style={styles.sectionTitle}>BROWSE BY CATEGORY</Text>
@@ -207,12 +432,10 @@ export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.Rea
                       </TouchableOpacity>
                     ))}
                   </View>
-
                   <Text style={styles.sectionDivider}>OR</Text>
                 </>
               )}
 
-              {/* Popular Brands / Search Results */}
               <Text style={styles.sectionTitle}>
                 {searchQuery ? 'SEARCH RESULTS' : 'POPULAR BRANDS'}
               </Text>
@@ -242,14 +465,13 @@ export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.Rea
             </ScrollView>
           )}
 
-          {/* Step: Models */}
+          {/* ── Step: Models ──────────────────────────────────────────── */}
           {step === 'models' && (
             <ScrollView style={styles.body} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <Text style={styles.modelCount}>
                 {modelsLoading ? 'Loading models...' : `${filteredModels.length} models`}
               </Text>
 
-              {/* Model search */}
               <View style={styles.searchBar}>
                 <Ionicons name="search" size={18} color="#4A5568" />
                 <TextInput
@@ -292,7 +514,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.Rea
             </ScrollView>
           )}
 
-          {/* Step: Protocol */}
+          {/* ── Step: Protocol ────────────────────────────────────────── */}
           {step === 'protocol' && (
             <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
               <ProtocolPicker
@@ -301,13 +523,175 @@ export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.Rea
                 onSelect={setSelectedProtocol}
               />
 
-              <TouchableOpacity style={styles.connectBtn} onPress={handleConnect} activeOpacity={0.8}>
+              <TouchableOpacity style={styles.connectBtn} onPress={handleProtocolNext} activeOpacity={0.8}>
                 <Text style={styles.connectBtnText}>
-                  Connect with {selectedProtocol === 'wifi' ? 'Wi-Fi' : selectedProtocol === 'ble' ? 'Bluetooth' : selectedProtocol === 'ir' ? 'IR' : selectedProtocol === 'homekit' ? 'HomeKit' : 'Matter'} →
+                  {selectedProtocol === 'ir'
+                    ? 'Connect via IR →'
+                    : `Set Up via ${PROTOCOL_LABELS[selectedProtocol]} →`}
                 </Text>
               </TouchableOpacity>
               <View style={{ height: 40 }} />
             </ScrollView>
+          )}
+
+          {/* ── Step: BLE Scan ───────────────────────────────────────── */}
+          {step === 'ble_scan' && (
+            <View style={styles.bleScanWrap}>
+              {/* Status bar */}
+              <View style={styles.bleScanHeader}>
+                {bleScanStatus === 'scanning' ? (
+                  <View style={styles.bleScanStatusRow}>
+                    <ActivityIndicator size="small" color="#6C63FF" style={{ marginRight: 8 }} />
+                    <Text style={styles.bleScanStatusText}>Scanning for devices…</Text>
+                  </View>
+                ) : bleScanStatus === 'unavailable' ? (
+                  <View style={styles.bleScanStatusRow}>
+                    <Ionicons name="bluetooth" size={16} color="#FF6B6B" style={{ marginRight: 6 }} />
+                    <Text style={[styles.bleScanStatusText, { color: '#FF6B6B' }]}>Bluetooth is off. Enable it in Settings.</Text>
+                  </View>
+                ) : (
+                  <View style={styles.bleScanStatusRow}>
+                    <Ionicons name="checkmark-circle" size={16} color="#00C9A7" style={{ marginRight: 6 }} />
+                    <Text style={[styles.bleScanStatusText, { color: '#00C9A7' }]}>
+                      {bleDevices.length > 0 ? `${bleDevices.length} device${bleDevices.length !== 1 ? 's' : ''} found` : 'No devices found'}
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.bleScanRescanBtn}
+                      onPress={startBleScan}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="refresh" size={14} color="#8892A4" />
+                      <Text style={styles.bleScanRescanText}>Rescan</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+
+              {/* Device list */}
+              <ScrollView style={styles.bleScanList} showsVerticalScrollIndicator={false}>
+                {bleDevices.length === 0 && bleScanStatus !== 'scanning' && (
+                  <View style={styles.bleEmptyWrap}>
+                    <Ionicons name="bluetooth" size={48} color="#1E2535" />
+                    <Text style={styles.bleEmptyTitle}>No devices found</Text>
+                    <Text style={styles.bleEmptySubtitle}>
+                      Make sure the device is in pairing mode and within 10 m.
+                    </Text>
+                    <TouchableOpacity style={styles.bleScanRescanBtnLg} onPress={startBleScan} activeOpacity={0.8}>
+                      <Ionicons name="refresh" size={16} color="#6C63FF" style={{ marginRight: 6 }} />
+                      <Text style={styles.bleScanRescanTextLg}>Scan again</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {bleDevices.map(device => (
+                  <TouchableOpacity
+                    key={device.id}
+                    style={styles.bleDeviceRow}
+                    onPress={() => handleBleDeviceSelect(device)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.bleDeviceIcon}>
+                      <Ionicons name="bluetooth" size={18} color="#6C63FF" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.bleDeviceName}>{device.name}</Text>
+                      <Text style={styles.bleDeviceId} numberOfLines={1}>{device.id}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color="#3A4257" />
+                  </TouchableOpacity>
+                ))}
+                <View style={{ height: 24 }} />
+              </ScrollView>
+            </View>
+          )}
+
+          {/* ── Step: Address ─────────────────────────────────────────── */}
+          {step === 'address' && addrCfg && (
+            <ScrollView style={styles.body} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <Text style={styles.sectionTitle}>CONNECT VIA {selectedProtocol.toUpperCase()}</Text>
+
+              <Text style={styles.fieldLabel}>{addrCfg.label}</Text>
+              <View style={styles.searchBar}>
+                <Ionicons name={addrCfg.icon} size={18} color="#4A5568" />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder={addrCfg.placeholder}
+                  placeholderTextColor="#4A5568"
+                  value={address}
+                  onChangeText={setAddress}
+                  keyboardType={addrCfg.keyboardType}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                  returnKeyType="done"
+                />
+                {address.length > 0 && (
+                  <TouchableOpacity onPress={() => setAddress('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={18} color="#4A5568" />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <View style={styles.hintBox}>
+                <Ionicons name="information-circle-outline" size={16} color="#4A5568" />
+                <Text style={styles.hintText}>{addrCfg.hint}</Text>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.connectBtn, !addressIsValid && styles.connectBtnDisabled]}
+                onPress={handleAddressNext}
+                disabled={!addressIsValid}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.connectBtnText}>Connect →</Text>
+              </TouchableOpacity>
+              <View style={{ height: 40 }} />
+            </ScrollView>
+          )}
+
+          {/* ── Step: Connecting ──────────────────────────────────────── */}
+          {step === 'connecting' && (
+            <View style={styles.connectingWrap}>
+              {connectPhase === 'connecting' && (
+                <>
+                  <ActivityIndicator size="large" color="#4FC3F7" style={{ marginBottom: 24 }} />
+                  <Text style={styles.connectingTitle}>Connecting…</Text>
+                  <Text style={styles.connectingSubtitle}>
+                    {selectedProtocol === 'ir'
+                      ? 'Checking IR blaster connection…'
+                      : selectedProtocol === 'ble'
+                      ? `Pairing with ${pendingResultRef.current?.address ?? 'device'}…`
+                      : selectedProtocol === 'homekit'
+                      ? 'Pairing with HomeKit…'
+                      : selectedProtocol === 'matter'
+                      ? 'Commissioning Matter device…'
+                      : `Reaching ${pendingResultRef.current?.address ?? address}…`}
+                  </Text>
+                </>
+              )}
+
+              {connectPhase === 'failed' && (
+                <>
+                  <View style={styles.errorIconWrap}>
+                    <Ionicons name="alert-circle" size={52} color="#FF6B6B" />
+                  </View>
+                  <Text style={styles.errorTitle}>Connection Failed</Text>
+                  <Text style={styles.errorMessage}>{connectError}</Text>
+
+                  <TouchableOpacity style={styles.retryBtn} onPress={handleRetryConnect} activeOpacity={0.8}>
+                    <Ionicons name="refresh" size={18} color="#0A0E1A" style={{ marginRight: 8 }} />
+                    <Text style={styles.retryBtnText}>Try Again</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.addAnywayBtn} onPress={handleAddAnyway} activeOpacity={0.8}>
+                    <Text style={styles.addAnywayBtnText}>Add Anyway (offline / IR)</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.cancelLink} onPress={onClose}>
+                    <Text style={styles.cancelLinkText}>Cancel</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
           )}
         </Animated.View>
       </KeyboardAvoidingView>
@@ -500,9 +884,214 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 24,
   },
+  connectBtnDisabled: {
+    backgroundColor: '#1E2535',
+  },
   connectBtnText: {
     fontSize: 16,
     fontWeight: '700',
     color: '#0A0E1A',
   },
+  // ── Address step ────────────────────────────────────────────────────────
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8892A4',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  hintBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#141928',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#1E2535',
+  },
+  hintText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#4A5568',
+    lineHeight: 19,
+  },
+  // ── Connecting / failed step ─────────────────────────────────────────────
+  connectingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  connectingTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 10,
+  },
+  connectingSubtitle: {
+    fontSize: 14,
+    color: '#4A5568',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  errorIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#FF6B6B18',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 10,
+  },
+  errorMessage: {
+    fontSize: 14,
+    color: '#8892A4',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 32,
+  },
+  retryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#4FC3F7',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    marginBottom: 12,
+    width: '100%',
+    justifyContent: 'center',
+  },
+  retryBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0A0E1A',
+  },
+  addAnywayBtn: {
+    backgroundColor: '#1E2535',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    marginBottom: 16,
+    width: '100%',
+    alignItems: 'center',
+  },
+  addAnywayBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#8892A4',
+  },
+  cancelLink: {
+    paddingVertical: 8,
+  },
+  cancelLinkText: {
+    fontSize: 14,
+    color: '#4A5568',
+    fontWeight: '600',
+  },
+  // ── BLE Scan step ────────────────────────────────────────────────────────
+  bleScanWrap: {
+    flex: 1,
+  },
+  bleScanHeader: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E2535',
+  },
+  bleScanStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  bleScanStatusText: {
+    fontSize: 13,
+    color: '#8892A4',
+    flex: 1,
+  },
+  bleScanRescanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  bleScanRescanText: {
+    fontSize: 13,
+    color: '#8892A4',
+    fontWeight: '600',
+  },
+  bleScanList: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+  },
+  bleDeviceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#141928',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#1E2535',
+    gap: 12,
+  },
+  bleDeviceIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#6C63FF18',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bleDeviceName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  bleDeviceId: {
+    fontSize: 11,
+    color: '#4A5568',
+    marginTop: 2,
+  },
+  bleEmptyWrap: {
+    alignItems: 'center',
+    paddingTop: 48,
+    paddingHorizontal: 24,
+  },
+  bleEmptyTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  bleEmptySubtitle: {
+    fontSize: 14,
+    color: '#4A5568',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  bleScanRescanBtnLg: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#6C63FF',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+  },
+  bleScanRescanTextLg: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#6C63FF',
+  },
 });
+

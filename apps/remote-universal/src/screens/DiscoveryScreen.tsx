@@ -43,7 +43,7 @@ export function DiscoveryScreen(): React.ReactElement {
     navigation.navigate('Remote', {
       deviceId: `manual-${Date.now()}`,
       deviceName: `${result.brand} ${result.model}`,
-      address: '',
+      address: result.address ?? '',
       deviceType: result.category === 'ac' ? 'ac' : result.category === 'speaker' ? 'speaker' : result.category === 'light' ? 'light' : 'tv',
       protocol: result.protocol,
       brand: result.brand,

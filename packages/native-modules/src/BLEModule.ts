@@ -57,15 +57,27 @@ export const BLEModule = {
    * Stops after `timeoutMs` milliseconds (default 5 s).
    */
   async scanForDevices(timeoutMs = 5000): Promise<string[]> {
-    return new Promise<string[]>((resolve) => {
-      const deviceIds: string[] = [];
+    const found = await BLEModule.scanForDevicesWithInfo(timeoutMs);
+    return found.map(d => d.id);
+  },
+
+  /**
+   * Scans for nearby BLE devices and streams results via `onDevice` callback.
+   * Resolves with the full list when the timeout expires or an error occurs.
+   */
+  scanForDevicesWithInfo(
+    timeoutMs = 7000,
+    onDevice?: (device: { id: string; name: string }) => void,
+  ): Promise<{ id: string; name: string }[]> {
+    return new Promise<{ id: string; name: string }[]>((resolve) => {
+      const found: { id: string; name: string }[] = [];
       const seen = new Set<string>();
       let manager: BleManagerInstance | undefined;
 
       function done() {
         clearTimeout(timer);
         try { manager?.stopDeviceScan(); } catch { /* ignore */ }
-        resolve(deviceIds);
+        resolve(found);
       }
 
       let timer: ReturnType<typeof setTimeout>;
@@ -81,11 +93,13 @@ export const BLEModule = {
           }
           if (device?.id && !seen.has(device.id)) {
             seen.add(device.id);
-            deviceIds.push(device.id);
+            const entry = { id: device.id, name: device.name ?? device.id };
+            found.push(entry);
+            onDevice?.(entry);
           }
         });
       } catch {
-        resolve(deviceIds);
+        resolve(found);
       }
     });
   },

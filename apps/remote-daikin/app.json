@@ -4,9 +4,16 @@
     "slug": "remote-daikin",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": { "bundleIdentifier": "com.daikin.remote" },
-    "android": { "package": "com.daikin.remote" },
+    "android": {
+      "package": "com.daikin.remote",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0D9898"
+      }
+    },
     "plugins": []
   }
 }

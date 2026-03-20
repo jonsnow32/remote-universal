@@ -4,6 +4,7 @@
     "slug": "remote-universal",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
@@ -17,7 +18,11 @@
     },
     "android": {
       "package": "com.remoteplatform.universal",
-      "usesCleartextTraffic": true
+      "usesCleartextTraffic": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0D9898"
+      }
     },
     "plugins": [
       "@remote/native-modules/plugin/withIRBlaster",

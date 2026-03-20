@@ -91,5 +91,16 @@ export const universalACLayout: RemoteLayoutDefinition = {
         { type: 'button', id: 'self-clean', label: 'Clean', icon: 'sparkles-outline', action: 'SELF_CLEAN', row: 1, col: 1, variant: 'ghost' },
       ],
     },
+
+    // ── Voice command ────────────────────────────────────────────────────────
+    {
+      id: 'voice',
+      title: 'Voice',
+      columns: 3,
+      rowHeight: 88,
+      widgets: [
+        { type: 'voice', id: 'voice-cmd', label: 'Voice', row: 0, col: 1 },
+      ],
+    },
   ],
 };

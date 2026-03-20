@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RemoteLayout } from '@remote/ui-kit';
 import { findLayout, SamsungTizen, AndroidTV, ANDROID_TV_NOT_PAIRED } from '@remote/device-sdk';
-import { IRModule, BLEModule, HomeKitModule, MatterModule } from '@remote/native-modules';
+import { IRModule, BLEModule, HomeKitModule, MatterModule, MicStreamModule } from '@remote/native-modules';
 import type { DeviceType, LayoutSection } from '@remote/core';
 import type { RemoteScreenProps, LayoutVariant } from '../types/navigation';
 import { appConfig } from '../config';
@@ -17,6 +17,7 @@ import { LayoutPicker } from '../components/LayoutPicker';
 import { useConnection } from '../hooks/useConnection';
 import type { ConnectParams } from '../hooks/useConnection';
 import { ProtocolBadge } from '../components/ProtocolBadge';
+import { VoiceCommandModal } from '../components/VoiceCommandModal';
 
 // ─── Layout helpers ──────────────────────────────────────────────────────────
 
@@ -85,6 +86,9 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
 
   // Samsung TV "Allow" guidance modal (shown on ms.channel.unauthorized)
   const [showSamsungAllowModal, setShowSamsungAllowModal] = useState(false);
+
+  // Voice command modal
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
 
   // Connection error modal
   const [showConnErrorModal, setShowConnErrorModal] = useState(false);
@@ -156,6 +160,12 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
   // ─── Button handler ───────────────────────────────────────────────────────
 
   const handleButtonPress = useCallback(async (action: string) => {
+    // Voice widget intercept — open modal instead of sending IR/HTTP command
+    if (action === 'VOICE_COMMAND') {
+      setShowVoiceModal(true);
+      return;
+    }
+
     showToast(`⏳ ${action}`, true);
     try {
       if (isSamsungTV) {
@@ -326,7 +336,10 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
           activeOpacity={1}
           onPress={() => setShowLayoutPicker(false)}
         >
-          <View style={[styles.pickerSheet, { paddingBottom: insets.bottom + 16 }]}>
+          <View
+            style={[styles.pickerSheet, { paddingBottom: insets.bottom + 16 }]}
+            onStartShouldSetResponder={() => true}
+          >
             <View style={styles.pickerHandle} />
             <LayoutPicker
               selected={selectedLayout}
@@ -381,6 +394,45 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
         onDismiss={() => {
           setShowSamsungAllowModal(false);
           SamsungTizen.disconnect(address);
+        }}
+      />
+
+      {/* Voice command modal — streams mic audio directly to the TV via
+          ms.remote.voice WebSocket (same as physical Samsung remote mic button) */}
+      <VoiceCommandModal
+        visible={showVoiceModal}
+        onMicStart={() => {
+          if (isSamsungTV) {
+            void SamsungTizen.startVoiceSession(address).catch(() => {});
+          }
+          void MicStreamModule.start().catch(() => {});
+          // Subscribe to audio chunks and forward to the TV
+          const unsubscribe = MicStreamModule.onChunk((b64) => {
+            if (isSamsungTV) SamsungTizen.sendVoiceAudioChunk(address, b64);
+          });
+          // Store unsubscribe ref using the existing pendingActionRef slot
+          (pendingActionRef as React.MutableRefObject<unknown>).current = unsubscribe;
+        }}
+        onMicStop={() => {
+          void MicStreamModule.stop().catch(() => {});
+          if (isSamsungTV) void SamsungTizen.stopVoiceSession(address).catch(() => {});
+          // Clean up chunk subscription
+          const unsubscribe = (pendingActionRef as React.MutableRefObject<unknown>).current;
+          if (typeof unsubscribe === 'function') {
+            (unsubscribe as () => void)();
+            (pendingActionRef as React.MutableRefObject<unknown>).current = null;
+          }
+        }}
+        onClose={() => {
+          // Ensure mic is always released when the modal closes
+          void MicStreamModule.stop().catch(() => {});
+          if (isSamsungTV) void SamsungTizen.stopVoiceSession(address).catch(() => {});
+          const unsubscribe = (pendingActionRef as React.MutableRefObject<unknown>).current;
+          if (typeof unsubscribe === 'function') {
+            (unsubscribe as () => void)();
+            (pendingActionRef as React.MutableRefObject<unknown>).current = null;
+          }
+          setShowVoiceModal(false);
         }}
       />
 

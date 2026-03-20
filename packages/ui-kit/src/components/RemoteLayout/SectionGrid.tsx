@@ -6,6 +6,7 @@ import { DPadW }     from './widgets/DPadW';
 import { RockerW }   from './widgets/RockerW';
 import { TouchpadW } from './widgets/TouchpadW';
 import { TextInputW } from './widgets/TextInputW';
+import { VoiceW }    from './widgets/VoiceW';
 
 interface Props {
   section: LayoutSection;
@@ -58,6 +59,8 @@ function renderWidget(widget: RemoteWidget, onAction: (a: string) => void): Reac
       return <TouchpadW key={widget.id} widget={widget} onAction={onAction} />;
     case 'text-input':
       return <TextInputW key={widget.id} widget={widget} onAction={onAction} />;
+    case 'voice':
+      return <VoiceW     key={widget.id} widget={widget} onAction={onAction} />;
     default:
       return null;
   }

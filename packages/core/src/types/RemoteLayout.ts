@@ -89,13 +89,29 @@ export interface TextInputWidget extends GridPlacement {
   action: string;
 }
 
+/**
+ * Voice-command widget.
+ * Renders a mic button that, when tapped, opens the voice command modal.
+ * The host passes the recognised transcript back via the special action
+ * `VOICE_COMMAND:<transcript>` so CommandDispatcher / VoiceCommandEngine
+ * can resolve it to a concrete DeviceCommand.
+ */
+export interface VoiceWidget extends GridPlacement {
+  type: 'voice';
+  id: string;
+  label?: string;   // default 'Voice'
+  /** Accent colour for the mic button ring. Defaults to theme primary. */
+  accentColor?: string;
+}
+
 /** Union of all widget types. */
 export type RemoteWidget =
   | ButtonWidget
   | DPadWidget
   | RockerWidget
   | TouchpadWidget
-  | TextInputWidget;
+  | TextInputWidget
+  | VoiceWidget;
 
 // ── Section & Layout ──────────────────────────────────────────────────────────
 

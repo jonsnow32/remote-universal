@@ -123,5 +123,16 @@ export const universalTVLayout: RemoteLayoutDefinition = {
         { type: 'button', id: '3d',         label: '3D',                                         action: 'THREE_D',        row: 0, col: 3, variant: 'ghost' },
       ],
     },
+
+    // ── Voice command ────────────────────────────────────────────────────────
+    {
+      id: 'voice',
+      title: 'Voice',
+      columns: 3,
+      rowHeight: 88,
+      widgets: [
+        { type: 'voice', id: 'voice-cmd', label: 'Voice', row: 0, col: 1 },
+      ],
+    },
   ],
 };

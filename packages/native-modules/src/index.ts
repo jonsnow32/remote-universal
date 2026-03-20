@@ -14,3 +14,5 @@ export {
   androidTvUnpair,
 } from './AndroidTVModule';
 export { samsungTizenPairWithTV } from './SamsungTizenPairingModule';
+export { MicStreamModule } from './MicStreamModule';
+export type { MicChunkListener } from './MicStreamModule';

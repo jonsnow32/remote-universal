@@ -390,6 +390,84 @@ export class SamsungTizen {
     return SamsungTizen.sendKey(ip, keyCode);
   }
 
+  /**
+   * Open the TV's built-in search / voice input UI.
+   * Triggers the same behaviour as pressing the mic/search button on a physical
+   * Samsung remote — the TV opens its search overlay and waits for text input.
+   */
+  static openVoiceSearch(ip: string): Promise<void> {
+    return SamsungTizen.sendKey(ip, 'KEY_SEARCH');
+  }
+
+  // ── Raw audio voice streaming (ms.remote.voice protocol) ─────────────────
+  //
+  // Physical Samsung remotes stream raw PCM audio over the same WebSocket
+  // connection used for key events.  The TV's built-in ASR engine processes
+  // the audio and displays results on screen (search, app launch, etc.) —
+  // exactly what happens when you hold the mic button on a physical remote.
+  //
+  // Sequence:
+  //   1. startVoiceSession  → TV opens voice UI + starts ASR
+  //   2. sendVoiceAudioChunk (called repeatedly, ~80 ms per chunk)
+  //   3. stopVoiceSession   → TV finalises recognition, executes command
+
+  /**
+   * Signal the TV to open its voice recognition overlay and start ASR.
+   * Call this immediately when the user presses the mic button, before
+   * sending any audio chunks.
+   */
+  static async startVoiceSession(ip: string): Promise<void> {
+    if (!SamsungTizen.readySessions.has(ip)) await SamsungTizen.connect(ip);
+
+    const ws = SamsungTizen.sessions.get(ip);
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      SamsungTizen.disconnectSync(ip);
+      await SamsungTizen.connect(ip);
+      return SamsungTizen.startVoiceSession(ip);
+    }
+
+    ws.send(JSON.stringify({
+      method: 'ms.remote.voice',
+      params: { Cmd: 'Start', TypeOfRemote: 'VoiceReq' },
+    }));
+  }
+
+  /**
+   * Stream a ~80 ms chunk of base64-encoded 16 kHz / mono / 16-bit PCM audio
+   * to the TV.  Call this inside your mic chunk listener while the user is speaking.
+   *
+   * The TV feeds these chunks into its ASR engine in real-time and updates the
+   * on-screen transcript, exactly like the physical remote's mic button.
+   */
+  static sendVoiceAudioChunk(ip: string, base64Pcm: string): void {
+    const ws = SamsungTizen.sessions.get(ip);
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    ws.send(JSON.stringify({
+      method: 'ms.remote.voice',
+      params: {
+        Cmd: 'Audio',
+        AudioData: base64Pcm,
+        TypeOfRemote: 'VoiceReq',
+      },
+    }));
+  }
+
+  /**
+   * Tell the TV that the user has stopped speaking.
+   * The TV finalises ASR, executes the recognised command (search, app launch,
+   * etc.) and dismisses the voice overlay — no further processing in the app.
+   */
+  static async stopVoiceSession(ip: string): Promise<void> {
+    const ws = SamsungTizen.sessions.get(ip);
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    ws.send(JSON.stringify({
+      method: 'ms.remote.voice',
+      params: { Cmd: 'Stop', TypeOfRemote: 'VoiceReq' },
+    }));
+  }
+
   /** Clear the stored pairing token for a TV (forces re-pairing). */
   static async clearToken(ip: string): Promise<void> {
     await AsyncStorage.removeItem(TOKEN_PREFIX + ip);

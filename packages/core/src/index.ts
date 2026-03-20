@@ -72,5 +72,9 @@ export { CommandDispatcher } from './commands/CommandDispatcher';
 export { MacroEngine } from './commands/MacroEngine';
 export type { Macro, MacroCommand } from './commands/MacroEngine';
 
+// Voice
+export { VoiceCommandEngine } from './voice/VoiceCommandEngine';
+export type { VoiceParseResult, VoiceParseOptions } from './voice/VoiceCommandEngine';
+
 // Registry
 export { DeviceRegistry } from './registry/DeviceRegistry';

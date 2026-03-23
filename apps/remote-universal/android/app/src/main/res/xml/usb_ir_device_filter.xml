@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- USB IR blaster device filter.
+     Android shows "Open Universal Remote?" when one of these devices is plugged in.
+     vendor-id / product-id must be DECIMAL (not hex). -->
+<resources>
+    <!-- USB-UIRT (0x1781 / 0x0938) -->
+    <usb-device vendor-id="6017"  product-id="2360"  />
+    <!-- USB IR Toy v2 — Dangerous Prototypes (0x04d8 / 0x003f) -->
+    <usb-device vendor-id="1240"  product-id="63"    />
+    <!-- USB IR Toy v1 (0x04d8 / 0xfd08) -->
+    <usb-device vendor-id="1240"  product-id="64776" />
+    <!-- FLIRC USB Gen 1 (0x20a0 / 0x0006) -->
+    <usb-device vendor-id="8352"  product-id="6"     />
+    <!-- FLIRC USB Gen 2 (0x20a0 / 0x4153) -->
+    <usb-device vendor-id="8352"  product-id="16723" />
+    <!-- IRTrans USB (0x0403 / 0xf850) -->
+    <usb-device vendor-id="1027"  product-id="63568" />
+    <!-- Irdroid USB (0x1e52 / 0x0002) -->
+    <usb-device vendor-id="7762"  product-id="2"     />
+    <!-- Silicon Labs CP210x — generic USB IR dongle (0x10c4 / 0xea60) -->
+    <usb-device vendor-id="4292"  product-id="60000" />
+    <!-- Prolific PL2303 — generic USB IR dongle (0x067b / 0x2303) -->
+    <usb-device vendor-id="1659"  product-id="8963"  />
+    <!-- STM32 Virtual COM — DIY IR sticks (0x0483 / 0x5740) -->
+    <usb-device vendor-id="1155"  product-id="22336" />
+    <!-- STM32 Virtual COM variant (0x0483 / 0x5750) -->
+    <usb-device vendor-id="1155"  product-id="22352" />
+    <!-- ELKSMART Smart IR Blaster (0x045C / 0x0195) -->
+    <usb-device vendor-id="1116"  product-id="405"   />
+</resources>

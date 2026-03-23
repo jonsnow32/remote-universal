@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import { devicesRouter } from './routes/devices';
 import { commandsRouter } from './routes/commands';
 import { tenantRouter } from './routes/tenant';
+import { irRouter } from './routes/ir';
 
 const server = Fastify({ logger: true });
 
@@ -12,6 +13,7 @@ void server.register(cors, { origin: true });
 void server.register(devicesRouter, { prefix: '/api/devices' });
 void server.register(commandsRouter, { prefix: '/api/commands' });
 void server.register(tenantRouter, { prefix: '/api/tenants' });
+void server.register(irRouter, { prefix: '/api/ir' });
 
 const start = async (): Promise<void> => {
   try {

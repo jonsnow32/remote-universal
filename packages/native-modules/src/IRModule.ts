@@ -1,4 +1,4 @@
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
 
 // ---------------------------------------------------------------------------
 // Pronto Hex parser
@@ -67,8 +67,21 @@ interface IRBlasterNative {
   getCarrierFrequencies(): Promise<Array<[number, number]>>;
 }
 
+interface USBIRBlasterNative {
+  isConnected(): Promise<boolean>;
+  getDeviceName(): Promise<string | null>;
+  requestPermission(): Promise<boolean>;
+  transmit(carrierFrequency: number, pattern: number[]): Promise<void>;
+  addListener(eventName: string): void;
+  removeListeners(count: number): void;
+}
+
 function getNative(): IRBlasterNative | null {
   return (NativeModules.IRBlaster as IRBlasterNative) ?? null;
+}
+
+function getUSBNative(): USBIRBlasterNative | null {
+  return (NativeModules.USBIRBlaster as USBIRBlasterNative) ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,15 +113,20 @@ function getNative(): IRBlasterNative | null {
  */
 export const IRModule = {
   /**
-   * Returns true when the app is running on Android and the device has a
-   * physical IR emitter confirmed by ConsumerIrManager.hasIrEmitter().
+   * Returns true when an IR transmitter is available — either the device's
+   * built-in ConsumerIrManager emitter OR a USB IR blaster is connected
+   * and the app has permission to use it.
    */
   async isAvailable(): Promise<boolean> {
     if (Platform.OS !== 'android') return false;
     try {
+      // 1. Check built-in ConsumerIrManager first
       const native = getNative();
-      if (!native) return false;
-      return native.hasIrEmitter();
+      if (native && (await native.hasIrEmitter())) return true;
+      // 2. Fall back to USB IR blaster
+      const usb = getUSBNative();
+      if (usb && (await usb.isConnected())) return true;
+      return false;
     } catch {
       return false;
     }
@@ -123,14 +141,6 @@ export const IRModule = {
   async transmit(_deviceId: string, payload: string): Promise<void> {
     if (Platform.OS !== 'android') {
       throw new Error('[IRModule] IR blasting is only supported on Android devices.');
-    }
-
-    const native = getNative();
-    if (!native) {
-      throw new Error(
-        '[IRModule] Native IRBlaster module not found. ' +
-          'Run `expo prebuild` after adding the @remote/native-modules plugin to app.json.'
-      );
     }
 
     let frequencyHz: number;
@@ -148,7 +158,30 @@ export const IRModule = {
       pattern = raw.pattern;
     }
 
-    await native.transmit(frequencyHz, pattern);
+    // 1. Try built-in ConsumerIrManager
+    const native = getNative();
+    if (native) {
+      const hasEmitter = await native.hasIrEmitter().catch(() => false);
+      if (hasEmitter) {
+        await native.transmit(frequencyHz, pattern);
+        return;
+      }
+    }
+
+    // 2. Fall back to USB IR blaster
+    const usb = getUSBNative();
+    if (usb) {
+      const usbConnected = await usb.isConnected().catch(() => false);
+      if (usbConnected) {
+        await usb.transmit(frequencyHz, pattern);
+        return;
+      }
+    }
+
+    throw new Error(
+      '[IRModule] No IR transmitter available. ' +
+        'This device has no built-in IR emitter and no USB IR blaster is connected.'
+    );
   },
 
   /**
@@ -167,5 +200,91 @@ export const IRModule = {
     } catch {
       return [];
     }
+  },
+
+  /**
+   * USB IR blaster helpers — event subscriptions and status queries
+   * for external USB Type-C / OTG IR dongles.
+   */
+  usb: {
+    /** Returns true if a USB IR blaster is connected and ready to transmit. */
+    async isConnected(): Promise<boolean> {
+      if (Platform.OS !== 'android') return false;
+      try {
+        return (await getUSBNative()?.isConnected()) ?? false;
+      } catch {
+        return false;
+      }
+    },
+
+    /** Returns the friendly product name of the connected USB device, or null. */
+    async getDeviceName(): Promise<string | null> {
+      if (Platform.OS !== 'android') return null;
+      try {
+        return (await getUSBNative()?.getDeviceName()) ?? null;
+      } catch {
+        return null;
+      }
+    },
+
+    /**
+     * Requests USB permission for the currently connected device.
+     * On Android this shows a system dialog. Result is also delivered via the
+     * USB_IR_PERMISSION_GRANTED / USB_IR_PERMISSION_DENIED events.
+     * Returns true if permission was already granted synchronously.
+     */
+    async requestPermission(): Promise<boolean> {
+      if (Platform.OS !== 'android') return false;
+      try {
+        return (await getUSBNative()?.requestPermission()) ?? false;
+      } catch {
+        return false;
+      }
+    },
+
+    /**
+     * Subscribe to USB IR blaster connection events.
+     * Returns an unsubscribe function.
+     */
+    onConnected(
+      callback: (info: { name: string; vendorId: string; productId: string }) => void
+    ): () => void {
+      if (Platform.OS !== 'android') return () => {};
+      const native = getUSBNative();
+      if (!native) return () => {};
+      const emitter = new NativeEventEmitter(native as never);
+      const sub = emitter.addListener('USB_IR_BLASTER_CONNECTED', callback);
+      return () => sub.remove();
+    },
+
+    /** Subscribe to USB IR blaster disconnection events. */
+    onDisconnected(callback: () => void): () => void {
+      if (Platform.OS !== 'android') return () => {};
+      const native = getUSBNative();
+      if (!native) return () => {};
+      const emitter = new NativeEventEmitter(native as never);
+      const sub = emitter.addListener('USB_IR_BLASTER_DISCONNECTED', callback);
+      return () => sub.remove();
+    },
+
+    /** Subscribe to USB permission granted events. */
+    onPermissionGranted(callback: () => void): () => void {
+      if (Platform.OS !== 'android') return () => {};
+      const native = getUSBNative();
+      if (!native) return () => {};
+      const emitter = new NativeEventEmitter(native as never);
+      const sub = emitter.addListener('USB_IR_PERMISSION_GRANTED', callback);
+      return () => sub.remove();
+    },
+
+    /** Subscribe to USB permission denied events. */
+    onPermissionDenied(callback: () => void): () => void {
+      if (Platform.OS !== 'android') return () => {};
+      const native = getUSBNative();
+      if (!native) return () => {};
+      const emitter = new NativeEventEmitter(native as never);
+      const sub = emitter.addListener('USB_IR_PERMISSION_DENIED', callback);
+      return () => sub.remove();
+    },
   },
 };

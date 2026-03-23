@@ -40,6 +40,10 @@ export type RootStackParamList = {
     deviceType: DeviceType;
     protocol: ConnectionProtocol;
     brand?: string;
+    /** Device model number (e.g. 'QN85B'). Used for IR code lookup. */
+    model?: string;
+    /** Pre-selected IR codeset ID from the setup flow. */
+    codesetId?: string;
     layoutId?: string;
   };
   /** Settings accessible from gear icon */

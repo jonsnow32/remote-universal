@@ -9,7 +9,11 @@ import com.facebook.react.uimanager.ViewManager
 
 class IRBlasterPackage : BaseReactPackage() {
     override fun getModule(name: String, context: ReactApplicationContext): NativeModule? =
-        if (name == "IRBlaster") IRBlasterModule(context) else null
+        when (name) {
+            "IRBlaster"    -> IRBlasterModule(context)
+            "USBIRBlaster" -> USBIRBlasterModule(context)
+            else           -> null
+        }
 
     override fun getReactModuleInfoProvider(): ReactModuleInfoProvider =
         ReactModuleInfoProvider {
@@ -17,10 +21,12 @@ class IRBlasterPackage : BaseReactPackage() {
                 "IRBlaster" to ReactModuleInfo(
                     "IRBlaster",
                     IRBlasterModule::class.java.name,
-                    false, // canOverrideExistingModule
-                    false, // needsEagerInit
-                    false, // isCxxModule
-                    false  // isTurboModule
+                    false, false, false, false
+                ),
+                "USBIRBlaster" to ReactModuleInfo(
+                    "USBIRBlaster",
+                    USBIRBlasterModule::class.java.name,
+                    false, false, false, false
                 )
             )
         }

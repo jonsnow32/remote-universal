@@ -17,6 +17,7 @@ import { SamsungTVAllowModal } from '../components/SamsungTVAllowModal';
 import { LayoutPicker } from '../components/LayoutPicker';
 import { useConnection } from '../hooks/useConnection';
 import type { ConnectParams } from '../hooks/useConnection';
+import { useIRResolver } from '../hooks/useIRResolver';
 import { ProtocolBadge } from '../components/ProtocolBadge';
 import { VoiceCommandModal } from '../components/VoiceCommandModal';
 
@@ -43,7 +44,14 @@ type ConnStatus = 'connecting' | 'connected' | 'error';
 export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const { deviceName, deviceType, address, protocol, brand, layoutId } = route.params;
+  const { deviceName, deviceType, address, protocol, brand, layoutId, model, codesetId } = route.params;
+
+  const irResolver = useIRResolver({
+    brand: brand ?? '',
+    category: deviceType,
+    model,
+    codesetId,
+  });
 
   // Connection runs in background — remote is shown immediately
   const [connStatus, setConnStatus] = useState<ConnStatus>('connecting');
@@ -303,7 +311,15 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
           throw err;
         }
       } else if (protocol === 'ir') {
-        await IRModule.transmit(address, action);
+        const irResult = await irResolver.transmit(action);
+        if (irResult.status === 'unavailable') {
+          showToast(irResult.reason ?? 'IR blaster not available', false);
+          return;
+        }
+        if (irResult.status === 'not_found') {
+          showToast(`No IR code found for: ${action}`, false);
+          return;
+        }
       } else if (protocol === 'ble') {
         await BLEModule.write(address, action);
       } else if (protocol === 'homekit') {

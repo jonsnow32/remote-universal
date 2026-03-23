@@ -17,7 +17,9 @@ import { useAllBrands, useModelsByBrand } from '../hooks/useCatalog';
 import type { CatalogModel } from '../hooks/useCatalog';
 import { ProtocolPicker } from './ProtocolPicker';
 import type { ConnectionProtocol, DeviceCategory } from '../types/navigation';
-import { BLEModule } from '@remote/native-modules';
+import { BLEModule, IRModule } from '@remote/native-modules';
+import { fetchIRCodesets, resolveIRCommand } from '../lib/irApi';
+import type { IRCodeset } from '../lib/irApi';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -86,17 +88,24 @@ export interface AddDeviceResult {
   category: DeviceCategory;
   protocol: ConnectionProtocol;
   modelId?: string;
+  /** Catalog brand slug (e.g. 'samsung'). Used by IR code resolver. */
+  brandSlug?: string;
   address?: string;
+  /** Pre-selected IR codeset ID (from the IR setup flow). */
+  codesetId?: string;
 }
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   onSelect: (result: AddDeviceResult) => void;
+  /** Pre-select a protocol when the sheet opens (e.g. 'ir' when opened from USB banner). */
+  defaultProtocol?: ConnectionProtocol;
 }
 
-type Step = 'search' | 'models' | 'protocol' | 'ble_scan' | 'address' | 'connecting';
+type Step = 'search' | 'models' | 'protocol' | 'ble_scan' | 'address' | 'ir_setup' | 'connecting';
 type ConnectPhase = 'connecting' | 'failed';
+type IRSetupPhase = 'loading' | 'testing' | 'confirmed' | 'not_found' | 'no_blaster';
 type BLEScanStatus = 'idle' | 'scanning' | 'done' | 'unavailable';
 
 interface BLEDeviceItem {
@@ -106,7 +115,7 @@ interface BLEDeviceItem {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.ReactElement | null {
+export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: Props): React.ReactElement | null {
   const slideAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
   const abortRef = useRef<AbortController | null>(null);
@@ -126,6 +135,13 @@ export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.Rea
   const [bleDevices, setBleDevices] = useState<BLEDeviceItem[]>([]);
   const [bleScanStatus, setBleScanStatus] = useState<BLEScanStatus>('idle');
   const bleScanAbortRef = useRef<{ stop: () => void } | null>(null);
+
+  // ── IR Setup state ────────────────────────────────────────────────────────
+  const [irSetupPhase, setIRSetupPhase] = useState<IRSetupPhase>('loading');
+  const [irCodesets, setIRCodesets] = useState<IRCodeset[]>([]);
+  const [irCodesetIndex, setIRCodesetIndex] = useState(0);
+  const [irTestPayload, setIRTestPayload] = useState<string | null>(null);
+  const irSelectedCodesetId = useRef<string | null>(null);
 
   const { data: brands, isLoading: brandsLoading } = useAllBrands();
   const { data: models, isLoading: modelsLoading } = useModelsByBrand(selectedBrandSlug);
@@ -154,7 +170,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.Rea
     setSelectedBrandSlug(null);
     setSelectedModel('');
     setSelectedModelId(null);
-    setSelectedProtocol('wifi');
+    setSelectedProtocol(defaultProtocol ?? 'wifi');
     setAddress('');
     setConnectPhase('connecting');
     setConnectError(null);
@@ -164,6 +180,11 @@ export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.Rea
     bleScanAbortRef.current = null;
     abortRef.current?.abort();
     pendingResultRef.current = null;
+    setIRSetupPhase('loading');
+    setIRCodesets([]);
+    setIRCodesetIndex(0);
+    setIRTestPayload(null);
+    irSelectedCodesetId.current = null;
   };  // ─── BLE Scan ────────────────────────────────────────────────────────────
 
   const startBleScan = async () => {
@@ -217,17 +238,6 @@ export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.Rea
     }
   };
 
-  const canGoBack = step !== 'search' && step !== 'connecting';
-
-  const headerTitle: Record<Step, string> = {
-    search:     'Add Device',
-    models:     `${selectedBrand} · ${selectedCategory?.toUpperCase() ?? 'TV'}`,
-    protocol:   `${selectedBrand} ${selectedModel}`,
-    ble_scan:   'Nearby Bluetooth Devices',
-    address:    `${PROTOCOL_LABELS[selectedProtocol]} Setup`,
-    connecting: connectPhase === 'failed' ? 'Connection Failed' : 'Connecting…',
-  };
-
   // ─── Step handlers ──────────────────────────────────────────────────────
 
   const handleBrandSelect = (name: string, slug: string | null) => {
@@ -248,19 +258,122 @@ export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.Rea
     setStep('protocol');
   };
 
-  /** Called from Protocol step — IR skips address entry, BLE goes to scan */
+  // ── IR Setup logic ────────────────────────────────────────────────────────
+
+  const startIRSetup = async () => {
+    setIRSetupPhase('loading');
+    setIRCodesets([]);
+    setIRCodesetIndex(0);
+    setIRTestPayload(null);
+    irSelectedCodesetId.current = null;
+
+    // Check IR blaster availability
+    const available = await IRModule.isAvailable();
+    if (!available) {
+      setIRSetupPhase('no_blaster');
+      return;
+    }
+
+    try {
+      const codesets = await fetchIRCodesets(
+        selectedBrandSlug ?? selectedBrand.toLowerCase(),
+        selectedCategory ?? 'tv',
+        selectedModel || undefined,
+      );
+      setIRCodesets(codesets);
+      if (codesets.length > 0) {
+        await loadTestPayload(codesets, 0);
+      } else {
+        setIRSetupPhase('not_found');
+      }
+    } catch {
+      setIRSetupPhase('not_found');
+    }
+  };
+
+  const loadTestPayload = async (codesets: IRCodeset[], index: number) => {
+    setIRCodesetIndex(index);
+    const codeset = codesets[index];
+    if (!codeset) {
+      setIRSetupPhase('not_found');
+      return;
+    }
+    try {
+      const resolved = await resolveIRCommand({
+        brand: selectedBrandSlug ?? selectedBrand.toLowerCase(),
+        category: selectedCategory ?? 'tv',
+        model: selectedModel || undefined,
+        command: 'POWER',
+        codesetId: codeset.id,
+      });
+      setIRTestPayload(resolved.payload);
+      irSelectedCodesetId.current = codeset.id;
+      setIRSetupPhase('testing');
+    } catch {
+      // Try next codeset
+      if (index + 1 < codesets.length) {
+        await loadTestPayload(codesets, index + 1);
+      } else {
+        setIRSetupPhase('not_found');
+      }
+    }
+  };
+
+  const handleIRTest = async () => {
+    if (!irTestPayload) return;
+    try {
+      await IRModule.transmit('', irTestPayload);
+    } catch {
+      // Transmit error is non-fatal — let user still confirm/deny
+    }
+  };
+
+  const handleIRConfirm = () => {
+    // User confirmed this codeset works
+    const result: AddDeviceResult = {
+      brand: selectedBrand,
+      model: selectedModel,
+      category: selectedCategory ?? 'tv',
+      protocol: 'ir',
+      modelId: selectedModelId ?? undefined,
+      brandSlug: selectedBrandSlug ?? undefined,
+      address: '',
+      codesetId: irSelectedCodesetId.current ?? undefined,
+    };
+    onSelect(result);
+    onClose();
+  };
+
+  const handleIRNextCodeset = async () => {
+    const nextIndex = irCodesetIndex + 1;
+    if (nextIndex < irCodesets.length) {
+      setIRSetupPhase('loading');
+      await loadTestPayload(irCodesets, nextIndex);
+    } else {
+      setIRSetupPhase('not_found');
+    }
+  };
+
+  const handleIRSkip = () => {
+    // Add device without a confirmed codeset — codes will be fetched per-command
+    const result: AddDeviceResult = {
+      brand: selectedBrand,
+      model: selectedModel,
+      category: selectedCategory ?? 'tv',
+      protocol: 'ir',
+      modelId: selectedModelId ?? undefined,
+      brandSlug: selectedBrandSlug ?? undefined,
+      address: '',
+    };
+    onSelect(result);
+    onClose();
+  };
+
+  /** Called from Protocol step — IR goes to ir_setup, BLE goes to scan */
   const handleProtocolNext = () => {
     if (selectedProtocol === 'ir') {
-      const result: AddDeviceResult = {
-        brand: selectedBrand,
-        model: selectedModel,
-        category: selectedCategory ?? 'tv',
-        protocol: 'ir',
-        modelId: selectedModelId ?? undefined,
-        address: '',
-      };
-      setStep('connecting');
-      runConnectionAttempt(result);
+      setStep('ir_setup');
+      void startIRSetup();
     } else if (selectedProtocol === 'ble') {
       setStep('ble_scan');
       startBleScan();
@@ -362,6 +475,18 @@ export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.Rea
 
   const addrCfg = ADDRESS_CONFIG[selectedProtocol];
   const addressIsValid = address.trim().length > 0;
+
+  const canGoBack = step !== 'search' && step !== 'connecting' && step !== 'ir_setup';
+
+  const headerTitle: Record<Step, string> = {
+    search:     'Add Device',
+    models:     `${selectedBrand} · ${selectedCategory?.toUpperCase() ?? 'TV'}`,
+    protocol:   `${selectedBrand} ${selectedModel}`,
+    ble_scan:   'Nearby Bluetooth Devices',
+    address:    `${PROTOCOL_LABELS[selectedProtocol]} Setup`,
+    ir_setup:   'Find Your Remote Code',
+    connecting: connectPhase === 'failed' ? 'Connection Failed' : 'Connecting…',
+  };
 
   // ─── Render ─────────────────────────────────────────────────────────────
 
@@ -646,6 +771,108 @@ export function AddDeviceSheet({ visible, onClose, onSelect }: Props): React.Rea
               </TouchableOpacity>
               <View style={{ height: 40 }} />
             </ScrollView>
+          )}
+
+          {/* ── Step: IR Setup ─────────────────────────────────────────── */}
+          {step === 'ir_setup' && (
+            <View style={styles.connectingWrap}>
+              {irSetupPhase === 'loading' && (
+                <>
+                  <ActivityIndicator size="large" color="#FFB347" style={{ marginBottom: 24 }} />
+                  <Text style={styles.connectingTitle}>Finding IR codes…</Text>
+                  <Text style={styles.connectingSubtitle}>
+                    Searching the IR database for {selectedBrand} {selectedModel}
+                  </Text>
+                </>
+              )}
+
+              {irSetupPhase === 'testing' && (
+                <>
+                  <View style={[styles.errorIconWrap, { backgroundColor: '#FFB34722' }]}>
+                    <Ionicons name="radio-outline" size={44} color="#FFB347" />
+                  </View>
+                  <Text style={styles.connectingTitle}>Test Your Remote</Text>
+                  <Text style={styles.connectingSubtitle}>
+                    Point your phone at the {selectedBrand} device and tap the button below.{'\n'}
+                    Code {irCodesetIndex + 1} of {irCodesets.length}
+                  </Text>
+
+                  <TouchableOpacity
+                    style={[styles.connectBtn, { backgroundColor: '#FFB347', marginTop: 24, width: '80%' }]}
+                    onPress={() => void handleIRTest()}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.connectBtnText, { color: '#0A0E1A' }]}>⚡ Send POWER</Text>
+                  </TouchableOpacity>
+
+                  <Text style={[styles.connectingSubtitle, { marginTop: 24, marginBottom: 8 }]}>
+                    Did the device turn on or off?
+                  </Text>
+
+                  <View style={{ flexDirection: 'row', gap: 12 }}>
+                    <TouchableOpacity
+                      style={[styles.retryBtn, { backgroundColor: '#00C9A7', flex: 1 }]}
+                      onPress={handleIRConfirm}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="checkmark" size={18} color="#0A0E1A" style={{ marginRight: 6 }} />
+                      <Text style={styles.retryBtnText}>Yes, it worked!</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.retryBtn, { backgroundColor: '#2A3147', flex: 1 }]}
+                      onPress={() => void handleIRNextCodeset()}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="arrow-forward" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+                      <Text style={[styles.retryBtnText, { color: '#FFFFFF' }]}>Try Next</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <TouchableOpacity style={styles.cancelLink} onPress={handleIRSkip}>
+                    <Text style={styles.cancelLinkText}>Skip — I'll test later</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              {irSetupPhase === 'not_found' && (
+                <>
+                  <View style={styles.errorIconWrap}>
+                    <Ionicons name="help-circle" size={52} color="#FFB347" />
+                  </View>
+                  <Text style={styles.errorTitle}>No codes found</Text>
+                  <Text style={styles.errorMessage}>
+                    We couldn't find IR codes for {selectedBrand} {selectedModel} in our database.
+                    You can still add the device and try Learn Mode.
+                  </Text>
+                  <TouchableOpacity style={styles.addAnywayBtn} onPress={handleIRSkip} activeOpacity={0.8}>
+                    <Text style={styles.addAnywayBtnText}>Add Anyway</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.cancelLink} onPress={onClose}>
+                    <Text style={styles.cancelLinkText}>Cancel</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              {irSetupPhase === 'no_blaster' && (
+                <>
+                  <View style={styles.errorIconWrap}>
+                    <Ionicons name="alert-circle" size={52} color="#FF6B6B" />
+                  </View>
+                  <Text style={styles.errorTitle}>No IR Blaster Found</Text>
+                  <Text style={styles.errorMessage}>
+                    This device doesn't have a built-in IR emitter. Connect a Wi-Fi IR hub
+                    (e.g. Broadlink RM4) to control devices via IR.
+                  </Text>
+                  <TouchableOpacity style={styles.addAnywayBtn} onPress={handleIRSkip} activeOpacity={0.8}>
+                    <Text style={styles.addAnywayBtnText}>Add Anyway (Hub)</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.cancelLink} onPress={onClose}>
+                    <Text style={styles.cancelLinkText}>Cancel</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
           )}
 
           {/* ── Step: Connecting ──────────────────────────────────────── */}

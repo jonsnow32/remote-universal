@@ -29,6 +29,26 @@
 # Expo modules
 -keep class expo.modules.** { *; }
 
+# ── Native modules (loaded by name via RN bridge — must not be renamed/stripped) ──
+-keep class com.streamless.nativemodules.** { *; }
+-keep class com.streamless.remote.** { *; }
+
+# ── SSL/TLS for LAN device pairing (Android TV TLS, Samsung WSS 8002) ──────────
+# Anonymous X509TrustManager in LanSslConfigurator uses interface methods
+-keep class * implements javax.net.ssl.X509TrustManager { *; }
+-keep class * implements javax.net.ssl.SSLSocketFactory { *; }
+-keep class * implements javax.net.ssl.HostnameVerifier { *; }
+
+# OkHttp (used by SamsungTizenPairing WebSocket and LanSslConfigurator)
+-keep class okhttp3.** { *; }
+-keepclassmembers class okhttp3.** { *; }
+
+# Kotlin coroutines / reflection (used in AndroidTVModule async executor)
+-keep class kotlin.** { *; }
+-keep class kotlinx.coroutines.** { *; }
+-dontwarn kotlin.**
+-dontwarn kotlinx.**
+
 # Suppress warnings for missing optional classes
 -dontwarn com.facebook.react.**
 -dontwarn okio.**

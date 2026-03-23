@@ -83,6 +83,9 @@ export function SettingsScreen(): React.ReactElement {
       <StatusBar barStyle="light-content" backgroundColor="#0A0E1A" />
 
       <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7}>
+          <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
         <Text style={styles.title}>Settings</Text>
       </View>
 
@@ -115,7 +118,7 @@ export function SettingsScreen(): React.ReactElement {
         </TouchableOpacity>
       )}
 
-      {/* Profile card */}
+      {/* Profile card
       <View style={styles.profileCard}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>U</Text>
@@ -127,7 +130,7 @@ export function SettingsScreen(): React.ReactElement {
         <TouchableOpacity style={styles.editBtn}>
           <Text style={styles.editBtnText}>Edit</Text>
         </TouchableOpacity>
-      </View>
+      </View> */}
 
       {/* General */}
       <Text style={styles.sectionLabel}>GENERAL</Text>
@@ -260,6 +263,12 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     marginBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  backBtn: {
+    marginRight: 4,
   },
   title: {
     fontSize: 24,

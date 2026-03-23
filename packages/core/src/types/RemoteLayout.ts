@@ -130,6 +130,7 @@ export interface LayoutSection {
 export interface RemoteLayoutDefinition {
   id: string;
   name: string;
+  deviceType: import('../discovery/DeviceDiscovery').DeviceType;
   sections: LayoutSection[];
 }
 

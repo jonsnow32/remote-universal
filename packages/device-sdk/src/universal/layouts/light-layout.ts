@@ -8,6 +8,7 @@ import type { RemoteLayoutDefinition } from '@remote/core';
 export const universalLightLayout: RemoteLayoutDefinition = {
   id: 'universal-light',
   name: 'Smart Light (Universal)',
+  deviceType: 'light',
   sections: [
     // ── Power ───────────────────────────────────────────────────────────────
     {

@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, View, Text, TouchableOpacity, StyleSheet, StatusBar, Modal, ActivityIndicator } from 'react-native';
+import { Animated, View, Text, TouchableOpacity, StyleSheet, StatusBar, Modal, ActivityIndicator, PermissionsAndroid, Platform, Linking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { RemoteLayout } from '@remote/ui-kit';
 import { findLayout, SamsungTizen, AndroidTV, ANDROID_TV_NOT_PAIRED } from '@remote/device-sdk';
 import { IRModule, BLEModule, HomeKitModule, MatterModule, MicStreamModule } from '@remote/native-modules';
@@ -47,24 +48,23 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
   // Connection runs in background — remote is shown immediately
   const [connStatus, setConnStatus] = useState<ConnStatus>('connecting');
 
-  // Layout
-  const [selectedLayout, setSelectedLayout] = useState<LayoutVariant>('universal');
+  // Layout — selectedLayout holds a layout ID from the registry
+  const universalFallbackId = DEVICE_TYPE_TO_LAYOUT[deviceType] ?? 'universal-tv';
+  const [selectedLayout, setSelectedLayout] = useState<string>(layoutId ?? universalFallbackId);
   const [showLayoutPicker, setShowLayoutPicker] = useState(false);
 
   // Persist layout preference per device
   const layoutStorageKey = `layout_pref_${route.params.deviceId ?? address}`;
   useEffect(() => {
     void AsyncStorage.getItem(layoutStorageKey).then(saved => {
-      if (saved === 'universal' || saved === 'brand' || saved === 'simple' || saved === 'custom') {
-        setSelectedLayout(saved);
-      }
+      if (saved) setSelectedLayout(saved);
     });
   }, [layoutStorageKey]);
 
-  const handleLayoutSelect = useCallback((variant: LayoutVariant) => {
-    setSelectedLayout(variant);
+  const handleLayoutSelect = useCallback((layoutId: string) => {
+    setSelectedLayout(layoutId);
     setShowLayoutPicker(false);
-    void AsyncStorage.setItem(layoutStorageKey, variant);
+    void AsyncStorage.setItem(layoutStorageKey, layoutId);
   }, [layoutStorageKey]);
 
   // Connection hook
@@ -79,8 +79,14 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
   const [apiBaseUrl, setApiBaseUrlState] = useState(appConfig.apiBaseUrl);
 
   // Android TV / Samsung pairing state
-  const isAndroidTV = layoutId === 'universal-stb';
-  const isSamsungTV = layoutId === 'samsung-tv';
+  const brandLower = (brand ?? '').toLowerCase();
+  const isSamsungTV = brandLower === 'samsung' && (deviceType === 'tv' || deviceType === 'stb');
+  const isAndroidTV = !isSamsungTV && (
+    deviceType === 'stb' ||
+    brandLower.includes('android') ||
+    brandLower === 'google' ||
+    brandLower === 'nvidia'
+  );
   const [showPairingModal, setShowPairingModal] = useState(false);
   const pendingActionRef = useRef<string | null>(null);
 
@@ -89,6 +95,15 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
 
   // Voice command modal
   const [showVoiceModal, setShowVoiceModal] = useState(false);
+  // 'stream' = ms.remote.voice supported, 'stt' = rejected (use phone STT),
+  // 'unknown' = not yet determined (will try stream first).
+  const samsungVoiceMode = useRef<'stream' | 'stt' | 'unknown'>('unknown');
+  const [sttState, setSttState] = useState<'idle' | 'listening' | 'recognized' | 'sending'>('idle');
+  const [sttTranscript, setSttTranscript] = useState('');
+  // Latest interim/final transcript from expo-speech-recognition
+  const sttTranscriptRef = useRef('');
+  // Whether the voice modal is currently open (ref avoids stale closure in events)
+  const voiceModalOpenRef = useRef(false);
 
   // Connection error modal
   const [showConnErrorModal, setShowConnErrorModal] = useState(false);
@@ -141,9 +156,7 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
 
   // ─── Layout sections ──────────────────────────────────────────────────────
 
-  const universalFallback = DEVICE_TYPE_TO_LAYOUT[deviceType] ?? 'universal-tv';
-  const effectiveLayoutId = selectedLayout === 'brand' ? layoutId : selectedLayout === 'simple' ? undefined : layoutId;
-  const sections: LayoutSection[] = findLayout(effectiveLayoutId, universalFallback)?.sections ?? [];
+  const sections: LayoutSection[] = findLayout(selectedLayout, universalFallbackId)?.sections ?? [];
 
   // ─── Toast ────────────────────────────────────────────────────────────────
 
@@ -157,12 +170,119 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
     ]).start(() => setToast(null));
   }, [toastAnim]);
 
+  // ─── STT (phone Speech-to-Text) → TV text search ─────────────────────────
+  //
+  // Used when the TV rejects ms.remote.voice.  expo-speech-recognition runs
+  // on-device (or via the OS speech API) and returns a transcript which we
+  // type into the TV's search field via SamsungTizen.sendText.
+
+  const sendVoiceQueryToTV = useCallback(async (text: string) => {
+    // Immediately close the modal / stop listening state so we don't double-send.
+    voiceModalOpenRef.current = false;
+    setSttState('sending');
+    setSttTranscript(text);
+    try {
+      await SamsungTizen.sendText(address, text);
+      console.log('[Voice] STT sent to TV:', text);
+    } catch (e) {
+      showToast('Could not send voice query to TV', false);
+    }
+    // Small delay so user sees "Sending to TV…" before modal disappears.
+    await new Promise<void>(r => setTimeout(r, 600));
+    setShowVoiceModal(false);
+    setSttState('idle');
+    setSttTranscript('');
+    sttTranscriptRef.current = '';
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address]);
+
+  // expo-speech-recognition events — must be called unconditionally at hook level.
+  useSpeechRecognitionEvent('result', (event) => {
+    const text = event.results[0]?.transcript ?? '';
+    if (text) {
+      sttTranscriptRef.current = text;
+      setSttTranscript(text);
+      if (sttState !== 'sending') setSttState('recognized');
+    }
+    if (event.isFinal && voiceModalOpenRef.current && text) {
+      void sendVoiceQueryToTV(text);
+    }
+  });
+
+  useSpeechRecognitionEvent('start', () => {
+    setSttState('listening');
+  });
+
+  useSpeechRecognitionEvent('end', () => {
+    // STT ended (auto silence detection or manual stop).
+    // If we have a transcript and modal is still open, send it.
+    if (voiceModalOpenRef.current && sttTranscriptRef.current && sttState !== 'sending') {
+      void sendVoiceQueryToTV(sttTranscriptRef.current);
+    } else if (voiceModalOpenRef.current && !sttTranscriptRef.current) {
+      // No speech detected
+      setSttState('idle');
+    }
+  });
+
+  useSpeechRecognitionEvent('error', (event) => {
+    console.warn('[Voice] STT error:', event.error, event.message);
+    if (voiceModalOpenRef.current) {
+      setSttState('idle');
+      if (event.error !== 'aborted') {
+        showToast('Could not understand — please try again', false);
+      }
+    }
+  });
+
   // ─── Button handler ───────────────────────────────────────────────────────
 
   const handleButtonPress = useCallback(async (action: string) => {
-    // Voice widget intercept — open modal instead of sending IR/HTTP command
+    // Voice widget intercept
     if (action === 'VOICE_COMMAND') {
-      setShowVoiceModal(true);
+      if (isAndroidTV) {
+        // Android TV: send KEYCODE_ASSIST to open Google Assistant on the TV
+        try {
+          await AndroidTV.sendAction(address, 'VOICE_COMMAND');
+        } catch (err) {
+          const code = (err as Error & { code?: string }).code;
+          if (code === ANDROID_TV_NOT_PAIRED) {
+            pendingActionRef.current = action;
+            setShowPairingModal(true);
+            return;
+          }
+          showToast(err instanceof Error ? err.message : 'Could not reach TV', false);
+        }
+        return;
+      }
+      // Samsung TV: stream mic audio via ms.remote.voice WebSocket
+      if (isSamsungTV) {
+        if (Platform.OS === 'android') {
+          const already = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+          if (!already) {
+            const result = await PermissionsAndroid.request(
+              PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+              {
+                title: 'Microphone permission',
+                message: 'Voice remote needs the microphone to send audio to your TV.',
+                buttonPositive: 'Allow',
+                buttonNegative: 'Deny',
+              },
+            );
+            if (result === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
+              showToast('Enable microphone in Settings → App permissions', false);
+              void Linking.openSettings();
+              return;
+            }
+            if (result !== PermissionsAndroid.RESULTS.GRANTED) {
+              showToast('Microphone permission denied', false);
+              return;
+            }
+          }
+        }
+        setShowVoiceModal(true);
+        return;
+      }
+      showToast('Voice not supported for this device', false);
       return;
     }
 
@@ -342,8 +462,8 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
           >
             <View style={styles.pickerHandle} />
             <LayoutPicker
+              deviceType={deviceType}
               selected={selectedLayout}
-              brandName={brand}
               onSelect={handleLayoutSelect}
             />
           </View>
@@ -397,26 +517,85 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
         }}
       />
 
-      {/* Voice command modal — streams mic audio directly to the TV via
-          ms.remote.voice WebSocket (same as physical Samsung remote mic button) */}
+      {/* Voice command modal.
+          'stream' mode: press-and-hold mic, audio streamed to TV via ms.remote.voice.
+          'stt' mode:    tap mic, phone STT → text typed into TV search field.
+          Mode auto-switches to 'stt' on first ms.error from the TV. */}
       <VoiceCommandModal
         visible={showVoiceModal}
+        mode={samsungVoiceMode.current === 'stt' ? 'stt' : 'stream'}
+        sttState={sttState}
+        transcript={sttTranscript}
         onMicStart={() => {
-          if (isSamsungTV) {
-            void SamsungTizen.startVoiceSession(address).catch(() => {});
-          }
-          void MicStreamModule.start().catch(() => {});
-          // Subscribe to audio chunks and forward to the TV
-          const unsubscribe = MicStreamModule.onChunk((b64) => {
-            if (isSamsungTV) SamsungTizen.sendVoiceAudioChunk(address, b64);
-          });
-          // Store unsubscribe ref using the existing pendingActionRef slot
-          (pendingActionRef as React.MutableRefObject<unknown>).current = unsubscribe;
+          void (async () => {
+            // ── STT mode (ms.remote.voice already known to be rejected) ────
+            if (isSamsungTV && samsungVoiceMode.current === 'stt') {
+              const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+              if (!perm.granted) {
+                showToast('Microphone permission denied', false);
+                return;
+              }
+              voiceModalOpenRef.current = true;
+              sttTranscriptRef.current = '';
+              setSttTranscript('');
+              setSttState('listening');
+              ExpoSpeechRecognitionModule.start({
+                interimResults: true,
+                continuous: false,
+                addsPunctuation: false,
+              });
+              return;
+            }
+
+            // ── Stream mode — try ms.remote.voice first ──────────────────
+            if (isSamsungTV) {
+              try {
+                await SamsungTizen.startVoiceSession(address);
+                // TV accepted — we are in stream mode.
+                samsungVoiceMode.current = 'stream';
+                console.log('[Voice] startVoiceSession accepted — stream mode');
+              } catch (e) {
+                // TV rejected ms.remote.voice — permanently switch to STT mode.
+                samsungVoiceMode.current = 'stt';
+                console.warn('[Voice] ms.remote.voice rejected, switching to STT mode:', e);
+                // Start STT immediately without closing the modal.
+                const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+                if (!perm.granted) {
+                  showToast('Microphone permission denied', false);
+                  setShowVoiceModal(false);
+                  return;
+                }
+                voiceModalOpenRef.current = true;
+                sttTranscriptRef.current = '';
+                setSttTranscript('');
+                setSttState('listening');
+                ExpoSpeechRecognitionModule.start({
+                  interimResults: true,
+                  continuous: false,
+                  addsPunctuation: false,
+                });
+                return;
+              }
+              // Stream mode active — start mic and forward chunks.
+              await MicStreamModule.start().catch((err: unknown) => {
+                showToast(err instanceof Error ? err.message : 'Mic failed to start', false);
+              });
+              const unsubscribe = MicStreamModule.onChunk((b64) => {
+                if (isSamsungTV) SamsungTizen.sendVoiceAudioChunk(address, b64);
+              });
+              (pendingActionRef as React.MutableRefObject<unknown>).current = unsubscribe;
+            }
+          })();
         }}
         onMicStop={() => {
+          if (isSamsungTV && samsungVoiceMode.current === 'stt') {
+            // STT mode: stop recognition — end event fires and sends transcript.
+            ExpoSpeechRecognitionModule.stop();
+            return;
+          }
+          // Stream mode cleanup.
           void MicStreamModule.stop().catch(() => {});
           if (isSamsungTV) void SamsungTizen.stopVoiceSession(address).catch(() => {});
-          // Clean up chunk subscription
           const unsubscribe = (pendingActionRef as React.MutableRefObject<unknown>).current;
           if (typeof unsubscribe === 'function') {
             (unsubscribe as () => void)();
@@ -424,14 +603,22 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
           }
         }}
         onClose={() => {
-          // Ensure mic is always released when the modal closes
-          void MicStreamModule.stop().catch(() => {});
-          if (isSamsungTV) void SamsungTizen.stopVoiceSession(address).catch(() => {});
-          const unsubscribe = (pendingActionRef as React.MutableRefObject<unknown>).current;
-          if (typeof unsubscribe === 'function') {
-            (unsubscribe as () => void)();
-            (pendingActionRef as React.MutableRefObject<unknown>).current = null;
+          // Always release mic / STT when modal closes.
+          voiceModalOpenRef.current = false;
+          if (isSamsungTV && samsungVoiceMode.current === 'stt') {
+            ExpoSpeechRecognitionModule.stop();
+          } else {
+            void MicStreamModule.stop().catch(() => {});
+            if (isSamsungTV) void SamsungTizen.stopVoiceSession(address).catch(() => {});
+            const unsubscribe = (pendingActionRef as React.MutableRefObject<unknown>).current;
+            if (typeof unsubscribe === 'function') {
+              (unsubscribe as () => void)();
+              (pendingActionRef as React.MutableRefObject<unknown>).current = null;
+            }
           }
+          setSttState('idle');
+          setSttTranscript('');
+          sttTranscriptRef.current = '';
           setShowVoiceModal(false);
         }}
       />

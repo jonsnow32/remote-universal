@@ -9,6 +9,7 @@ import type { RemoteLayoutDefinition } from '@remote/core';
 export const universalACLayout: RemoteLayoutDefinition = {
   id: 'universal-ac',
   name: 'Air Conditioner (Universal)',
+  deviceType: 'ac',
   sections: [
     // ── Power ───────────────────────────────────────────────────────────────
     {

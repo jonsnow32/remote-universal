@@ -15,12 +15,23 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 export interface VoiceCommandModalProps {
   visible: boolean;
   /**
+   * 'stream' — press-and-hold, audio streamed to TV (ms.remote.voice).
+   * 'stt'    — tap once, phone recognises speech and sends text to TV.
+   * Defaults to 'stream'.
+   */
+  mode?: 'stream' | 'stt';
+  /** STT lifecycle state (only used in 'stt' mode). */
+  sttState?: 'idle' | 'listening' | 'recognized' | 'sending';
+  /** Recognised transcript text (shown in 'recognized'/'sending' states). */
+  transcript?: string;
+  /**
    * Called when the user presses the mic button.
-   * Host should: open the TV voice session, start MicStreamModule.
+   * stream mode: host starts audio streaming.
+   * stt mode:    host starts speech recognition.
    */
   onMicStart: () => void;
   /**
-   * Called when the user releases the mic button.
+   * Called when the user releases the mic button (stream mode only).
    * Host should: stop MicStreamModule, close the TV voice session.
    */
   onMicStop: () => void;
@@ -114,17 +125,20 @@ function WaveformBars({ active }: { active: boolean }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 /**
- * VoiceCommandModal — physical-remote mic emulation.
+ * VoiceCommandModal — remote mic button.
  *
- * Press and hold the mic button to speak. Audio is streamed directly to the TV
- * via the Samsung Tizen ms.remote.voice WebSocket protocol — the TV's built-in
- * ASR engine handles recognition and command execution, exactly like pressing
- * the mic button on a physical Samsung remote.
- *
- * No local NLP or transcript-to-command mapping is performed in the app.
+ * Supports two modes:
+ *   'stream' (default) — press-and-hold streams raw PCM to the TV via
+ *                        ms.remote.voice (like a physical Samsung remote).
+ *   'stt'              — tap once; phone does Speech-to-Text, result is sent
+ *                        to the TV as a text search query.  Used when the TV
+ *                        does not support ms.remote.voice.
  */
 export function VoiceCommandModal({
   visible,
+  mode = 'stream',
+  sttState = 'idle',
+  transcript,
   onMicStart,
   onMicStop,
   onClose,
@@ -138,6 +152,7 @@ export function VoiceCommandModal({
     if (!visible) setHolding(false);
   }, [visible]);
 
+  // ── Stream mode handlers (press & hold) ──────────────────────────────────
   const handlePressIn = () => {
     setHolding(true);
     onMicStart();
@@ -150,6 +165,77 @@ export function VoiceCommandModal({
     Animated.spring(micScale, { toValue: 1, useNativeDriver: true, speed: 20, bounciness: 8 }).start();
   };
 
+  // ── STT mode handler (tap once) ───────────────────────────────────────────
+  const handleSttTap = () => {
+    if (sttState === 'idle') {
+      onMicStart();
+      Animated.spring(micScale, { toValue: 0.88, useNativeDriver: true, speed: 30, bounciness: 0 }).start();
+    }
+  };
+
+  const isSttActive = mode === 'stt' && (sttState === 'listening' || sttState === 'sending');
+
+  // ── Body copy ─────────────────────────────────────────────────────────────
+  const renderBody = () => {
+    if (mode === 'stt') {
+      if (sttState === 'listening') {
+        return (
+          <>
+            <WaveformBars active />
+            <Text style={styles.listeningText}>Listening…</Text>
+            <Text style={styles.subText}>Speak now — stops automatically</Text>
+          </>
+        );
+      }
+      if (sttState === 'recognized' || sttState === 'sending') {
+        return (
+          <>
+            <Ionicons name="checkmark-circle" size={32} color="#38A169" style={{ marginBottom: 8 }} />
+            <Text style={[styles.headingText, { color: '#38A169' }]}>
+              {sttState === 'sending' ? 'Sending to TV…' : 'Recognised'}
+            </Text>
+            {!!transcript && (
+              <Text style={[styles.subText, { color: '#CBD5E0', marginTop: 6, fontSize: 15 }]}>
+                "{transcript}"
+              </Text>
+            )}
+          </>
+        );
+      }
+      // idle
+      return (
+        <>
+          <Ionicons name="tv-outline" size={32} color="#3A4A66" style={{ marginBottom: 12 }} />
+          <Text style={styles.headingText}>Tap to speak</Text>
+          <Text style={styles.subText}>
+            Tap the mic button and speak.{'\n'}
+            The TV will search for what you said.
+          </Text>
+        </>
+      );
+    }
+
+    // stream mode
+    return holding ? (
+      <>
+        <WaveformBars active />
+        <Text style={styles.listeningText}>Listening…</Text>
+        <Text style={styles.subText}>Release to send to TV</Text>
+      </>
+    ) : (
+      <>
+        <Ionicons name="tv-outline" size={32} color="#3A4A66" style={{ marginBottom: 12 }} />
+        <Text style={styles.headingText}>Hold to speak</Text>
+        <Text style={styles.subText}>
+          Press and hold the mic button.{'\n'}
+          The TV will hear and respond directly.
+        </Text>
+      </>
+    );
+  };
+
+  const micActive = mode === 'stt' ? isSttActive : holding;
+
   return (
     <Modal
       visible={visible}
@@ -160,7 +246,7 @@ export function VoiceCommandModal({
       <TouchableOpacity
         style={styles.overlay}
         activeOpacity={1}
-        onPress={!holding ? onClose : undefined}
+        onPress={!micActive ? onClose : undefined}
       >
         <View
           style={[styles.sheet, { paddingBottom: insets.bottom + 32 }]}
@@ -170,47 +256,45 @@ export function VoiceCommandModal({
           <View style={styles.handle} />
 
           {/* Close */}
-          <TouchableOpacity style={styles.closeBtn} onPress={onClose} disabled={holding}>
-            <Ionicons name="close" size={22} color={holding ? '#2A3347' : '#8892A4'} />
+          <TouchableOpacity style={styles.closeBtn} onPress={onClose} disabled={micActive}>
+            <Ionicons name="close" size={22} color={micActive ? '#2A3347' : '#8892A4'} />
           </TouchableOpacity>
 
           {/* Status text */}
-          <View style={styles.body}>
-            {holding ? (
-              <>
-                <WaveformBars active />
-                <Text style={styles.listeningText}>Listening…</Text>
-                <Text style={styles.subText}>Release to send to TV</Text>
-              </>
-            ) : (
-              <>
-                <Ionicons name="tv-outline" size={32} color="#3A4A66" style={{ marginBottom: 12 }} />
-                <Text style={styles.headingText}>Hold to speak</Text>
-                <Text style={styles.subText}>
-                  Press and hold the mic button.{'\n'}
-                  The TV will hear and respond directly.
-                </Text>
-              </>
-            )}
-          </View>
+          <View style={styles.body}>{renderBody()}</View>
 
           {/* Mic button with pulse rings */}
           <View style={styles.micArea}>
-            <PulseRings active={holding} />
+            <PulseRings active={micActive} />
             <Animated.View style={{ transform: [{ scale: micScale }] }}>
-              <TouchableOpacity
-                style={[styles.micBtn, holding && styles.micBtnActive]}
-                onPressIn={handlePressIn}
-                onPressOut={handlePressOut}
-                activeOpacity={1}
-                delayPressIn={0}
-              >
-                <Ionicons
-                  name={holding ? 'mic' : 'mic-outline'}
-                  size={36}
-                  color="#FFFFFF"
-                />
-              </TouchableOpacity>
+              {mode === 'stt' ? (
+                <TouchableOpacity
+                  style={[styles.micBtn, micActive && styles.micBtnActive]}
+                  onPress={handleSttTap}
+                  activeOpacity={0.8}
+                  disabled={sttState !== 'idle'}
+                >
+                  <Ionicons
+                    name={micActive ? 'mic' : 'mic-outline'}
+                    size={36}
+                    color="#FFFFFF"
+                  />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.micBtn, holding && styles.micBtnActive]}
+                  onPressIn={handlePressIn}
+                  onPressOut={handlePressOut}
+                  activeOpacity={1}
+                  delayPressIn={0}
+                >
+                  <Ionicons
+                    name={holding ? 'mic' : 'mic-outline'}
+                    size={36}
+                    color="#FFFFFF"
+                  />
+                </TouchableOpacity>
+              )}
             </Animated.View>
           </View>
         </View>

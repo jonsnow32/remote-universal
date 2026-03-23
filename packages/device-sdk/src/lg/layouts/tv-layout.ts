@@ -3,6 +3,7 @@ import type { RemoteLayoutDefinition } from '@remote/core';
 export const lgTVLayout: RemoteLayoutDefinition = {
   id: 'lg-tv',
   name: 'LG TV',
+  deviceType: 'tv',
   sections: [
     {
       id: 'power',

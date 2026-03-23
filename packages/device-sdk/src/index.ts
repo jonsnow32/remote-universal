@@ -14,4 +14,4 @@ export * from './android';
 export * from './universal';
 
 // Combined layout registry (brand-first, universal as fallback)
-export { allBrandLayouts, findLayout } from './allLayouts';
+export { allBrandLayouts, ALL_LAYOUTS, findLayout, getLayoutsForDeviceType } from './allLayouts';

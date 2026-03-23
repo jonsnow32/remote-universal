@@ -40,6 +40,7 @@ export const ANDROID_TV_KEY_MAP: Record<string, number> = {
   BACK:           4,  // KEYCODE_BACK
   MENU:          82,  // KEYCODE_MENU
   SEARCH:        84,  // KEYCODE_SEARCH
+  VOICE_COMMAND: 219, // KEYCODE_ASSIST — opens Google Assistant on Android TV
   PLAY_PAUSE:    85,  // KEYCODE_MEDIA_PLAY_PAUSE
   PLAY:         126,  // KEYCODE_MEDIA_PLAY
   PAUSE:        127,  // KEYCODE_MEDIA_PAUSE

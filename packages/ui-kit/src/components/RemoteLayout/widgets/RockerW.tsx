@@ -22,8 +22,7 @@ function haptic() {
 }
 
 export function RockerW({ widget, onAction }: Props) {
-  const containerRef = useRef<View>(null);
-  const pageLayout = useRef({ top: 0, height: 0 });
+  const containerHeight = useRef(0);
   const upAnim   = useRef(new Animated.Value(1)).current;
   const downAnim = useRef(new Animated.Value(1)).current;
   const midAnim  = useRef(new Animated.Value(1)).current;
@@ -34,12 +33,6 @@ export function RockerW({ widget, onAction }: Props) {
       Animated.timing(anim, { toValue: 1,    duration: 130, useNativeDriver: true }),
     ]).start();
 
-  const measure = () => {
-    containerRef.current?.measureInWindow((_, y, __, h) => {
-      pageLayout.current = { top: y, height: h };
-    });
-  };
-
   const hasMid = !!widget.midAction;
 
   const panResponder = useRef(
@@ -47,7 +40,7 @@ export function RockerW({ widget, onAction }: Props) {
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 5,
 
-      onPanResponderRelease: (_, gs) => {
+      onPanResponderRelease: (evt, gs) => {
         const { dy } = gs;
 
         // ── Swipe ──────────────────────────────────────────────────────────
@@ -58,16 +51,17 @@ export function RockerW({ widget, onAction }: Props) {
           return;
         }
 
-        // ── Tap: top / mid / bottom zone ───────────────────────────────────
-        const { top, height } = pageLayout.current;
-        const relY = gs.y0 - top;
+        // ── Tap: container-local locationY (pill has pointerEvents="none"
+        //   so this View is always the touch target — locationY is accurate).
+        const relY  = evt.nativeEvent.locationY;
+        const height = containerHeight.current;
         haptic();
 
         if (hasMid) {
           const third = height / 3;
-          if      (relY < third)         { flash(upAnim);   onAction(widget.upAction); }
-          else if (relY < 2 * third)     { flash(midAnim);  onAction(widget.midAction!); }
-          else                           { flash(downAnim); onAction(widget.downAction); }
+          if      (relY < third)       { flash(upAnim);   onAction(widget.upAction); }
+          else if (relY < 2 * third)   { flash(midAnim);  onAction(widget.midAction!); }
+          else                         { flash(downAnim); onAction(widget.downAction); }
         } else {
           if (relY < height / 2) { flash(upAnim);   onAction(widget.upAction); }
           else                   { flash(downAnim); onAction(widget.downAction); }
@@ -95,12 +89,12 @@ export function RockerW({ widget, onAction }: Props) {
 
   return (
     <View
-      ref={containerRef}
       style={{ flex: 1 }}
-      onLayout={measure}
+      onLayout={e => { containerHeight.current = e.nativeEvent.layout.height; }}
       {...panResponder.panHandlers}
     >
       <View
+        pointerEvents="none"
         style={{
           flex: 1,
           borderRadius: 28,

@@ -3,6 +3,7 @@ import { lgTVLayout } from './lg';
 import { daikinACLayout } from './daikin';
 import { allUniversalLayouts } from './universal';
 import type { RemoteLayoutDefinition } from '@remote/core';
+import type { DeviceType } from '@remote/core';
 
 /** All brand-specific layouts. Checked before universal fallbacks. */
 export const allBrandLayouts: RemoteLayoutDefinition[] = [
@@ -12,10 +13,18 @@ export const allBrandLayouts: RemoteLayoutDefinition[] = [
 ];
 
 /** Combined registry: brand layouts first, then universal fallbacks. */
-const ALL_LAYOUTS: RemoteLayoutDefinition[] = [
+export const ALL_LAYOUTS: RemoteLayoutDefinition[] = [
   ...allBrandLayouts,
   ...allUniversalLayouts,
 ];
+
+/**
+ * Returns all layouts (brand-specific first, then universal) that match
+ * the given device type. Use this to populate a layout picker.
+ */
+export function getLayoutsForDeviceType(deviceType: DeviceType): RemoteLayoutDefinition[] {
+  return ALL_LAYOUTS.filter(l => l.deviceType === deviceType);
+}
 
 /**
  * Look up a layout by id. Searches brand layouts first, then universal.

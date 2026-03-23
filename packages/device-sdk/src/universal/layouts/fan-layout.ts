@@ -8,6 +8,7 @@ import type { RemoteLayoutDefinition } from '@remote/core';
 export const universalFanLayout: RemoteLayoutDefinition = {
   id: 'universal-fan',
   name: 'Fan (Universal)',
+  deviceType: 'fan',
   sections: [
     // ── Power ───────────────────────────────────────────────────────────────
     {

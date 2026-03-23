@@ -69,6 +69,11 @@ export class SamsungTizen {
   private static readySessions = new Set<string>();
   // Mutex: only one connect() per IP at a time.
   private static connecting = new Map<string, Promise<void>>();
+  // Pending settlers for startVoiceSession — rejected if TV sends ms.error.
+  private static voiceStartPending = new Map<string, {
+    reject: (e: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }>();
 
   /** Build WS URL for a given ip/port/token. */
   private static buildUrl(ip: string, port: number, token: string | null, deviceId: string): string {
@@ -275,9 +280,19 @@ export class SamsungTizen {
             event: string;
             data?: { token?: string };
           };
-          console.log('[SamsungTizen] event:', msg.event);
+          console.log('[SamsungTizen] event:', msg.event, msg.data ? JSON.stringify(msg.data) : '');
 
-          if (msg.event === 'ms.channel.connect') {
+          if (msg.event === 'ms.error') {
+            // TV rejected the last command (e.g. ms.remote.voice not supported).
+            const pending = SamsungTizen.voiceStartPending.get(ip);
+            if (pending) {
+              clearTimeout(pending.timer);
+              SamsungTizen.voiceStartPending.delete(ip);
+              pending.reject(new Error(
+                `ms.error from TV: ${JSON.stringify(msg.data ?? {})}`,
+              ));
+            }
+          } else if (msg.event === 'ms.channel.connect') {
             const newToken = msg.data?.token;
             if (newToken && newToken !== token) {
               void AsyncStorage.setItem(TOKEN_PREFIX + ip, newToken);
@@ -399,6 +414,43 @@ export class SamsungTizen {
     return SamsungTizen.sendKey(ip, 'KEY_SEARCH');
   }
 
+  /**
+   * Type a text query into the TV's search field.
+   *
+   * Flow: KEY_SEARCH → (wait for search UI) → SendInputString → KEY_ENTER.
+   *
+   * Used as a fallback when the TV does not support ms.remote.voice:
+   * phone-side STT recognises the speech, then this sends the resulting
+   * text to the TV so it performs the search / command.
+   */
+  static async sendText(ip: string, text: string): Promise<void> {
+    // Open the search overlay — this focuses the text field on the TV.
+    await SamsungTizen.sendKey(ip, 'KEY_SEARCH');
+
+    // Wait for the TV's search UI to animate in and gain focus.
+    await new Promise<void>(r => setTimeout(r, 800));
+
+    const ws = SamsungTizen.sessions.get(ip);
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    // Inject text directly into the focused input field.
+    const payload = JSON.stringify({
+      method: 'ms.remote.control',
+      params: {
+        Cmd: 'ClickViewOn',
+        DataOfCmd: text,
+        Option: 'false',
+        TypeOfRemote: 'SendInputString',
+      },
+    });
+    console.log('[SamsungTizen] sendText:', JSON.stringify(text));
+    ws.send(payload);
+
+    // Brief pause then submit.
+    await new Promise<void>(r => setTimeout(r, 300));
+    await SamsungTizen.sendKey(ip, 'KEY_ENTER');
+  }
+
   // ── Raw audio voice streaming (ms.remote.voice protocol) ─────────────────
   //
   // Physical Samsung remotes stream raw PCM audio over the same WebSocket
@@ -426,10 +478,23 @@ export class SamsungTizen {
       return SamsungTizen.startVoiceSession(ip);
     }
 
-    ws.send(JSON.stringify({
+    const payload = JSON.stringify({
       method: 'ms.remote.voice',
       params: { Cmd: 'Start', TypeOfRemote: 'VoiceReq' },
-    }));
+    });
+    console.log('[SamsungTizen] startVoiceSession sending:', payload);
+    ws.send(payload);
+
+    // Wait up to 600 ms for the TV to respond with ms.error.
+    // If we hit the timeout first → TV accepted (resolve). If ms.error arrives
+    // before the timeout → reject so the caller can fall back gracefully.
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        SamsungTizen.voiceStartPending.delete(ip);
+        resolve();
+      }, 600);
+      SamsungTizen.voiceStartPending.set(ip, { reject, timer });
+    });
   }
 
   /**
@@ -441,8 +506,10 @@ export class SamsungTizen {
    */
   static sendVoiceAudioChunk(ip: string, base64Pcm: string): void {
     const ws = SamsungTizen.sessions.get(ip);
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      console.warn('[SamsungTizen] sendVoiceAudioChunk: WS not open, dropping chunk');
+      return;
+    }
     ws.send(JSON.stringify({
       method: 'ms.remote.voice',
       params: {
@@ -460,12 +527,16 @@ export class SamsungTizen {
    */
   static async stopVoiceSession(ip: string): Promise<void> {
     const ws = SamsungTizen.sessions.get(ip);
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-
-    ws.send(JSON.stringify({
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      console.warn('[SamsungTizen] stopVoiceSession: WS not open');
+      return;
+    }
+    const payload = JSON.stringify({
       method: 'ms.remote.voice',
       params: { Cmd: 'Stop', TypeOfRemote: 'VoiceReq' },
-    }));
+    });
+    console.log('[SamsungTizen] stopVoiceSession sending:', payload);
+    ws.send(payload);
   }
 
   /** Clear the stored pairing token for a TV (forces re-pairing). */

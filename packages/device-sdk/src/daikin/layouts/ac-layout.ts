@@ -3,6 +3,7 @@ import type { RemoteLayoutDefinition } from '@remote/core';
 export const daikinACLayout: RemoteLayoutDefinition = {
   id: 'daikin-ac',
   name: 'Daikin AC',
+  deviceType: 'ac',
   sections: [
     {
       id: 'power',

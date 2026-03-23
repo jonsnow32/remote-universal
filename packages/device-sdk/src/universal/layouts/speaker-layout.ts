@@ -7,6 +7,7 @@ import type { RemoteLayoutDefinition } from '@remote/core';
 export const universalSpeakerLayout: RemoteLayoutDefinition = {
   id: 'universal-speaker',
   name: 'Speaker (Universal)',
+  deviceType: 'speaker',
   sections: [
     // ── Power ───────────────────────────────────────────────────────────────
     {

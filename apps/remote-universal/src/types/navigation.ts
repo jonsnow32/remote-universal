@@ -24,7 +24,8 @@ export interface SavedDevice {
 
 // ─── Layout options ──────────────────────────────────────────────────────────
 
-export type LayoutVariant = 'universal' | 'simple' | 'brand' | 'custom';
+/** A layout ID string referencing an entry in the device-sdk layout registry. */
+export type LayoutVariant = string;
 
 // ─── Navigation param lists ──────────────────────────────────────────────────
 

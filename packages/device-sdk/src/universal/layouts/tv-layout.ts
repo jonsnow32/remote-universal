@@ -8,6 +8,7 @@ import type { RemoteLayoutDefinition } from '@remote/core';
 export const universalTVLayout: RemoteLayoutDefinition = {
   id: 'universal-tv',
   name: 'TV (Universal)',
+  deviceType: 'tv',
   sections: [
     // ── Power ───────────────────────────────────────────────────────────────
     {

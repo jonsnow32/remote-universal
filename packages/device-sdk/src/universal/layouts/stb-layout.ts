@@ -8,6 +8,7 @@ import type { RemoteLayoutDefinition } from '@remote/core';
 export const universalSTBLayout: RemoteLayoutDefinition = {
   id: 'universal-stb',
   name: 'Set-top Box (Universal)',
+  deviceType: 'stb',
   sections: [
     // ── Power ───────────────────────────────────────────────────────────────
     {

@@ -8,6 +8,7 @@ import type { RemoteLayoutDefinition } from '@remote/core';
 export const universalProjectorLayout: RemoteLayoutDefinition = {
   id: 'universal-projector',
   name: 'Projector (Universal)',
+  deviceType: 'projector',
   sections: [
     // ── Power ───────────────────────────────────────────────────────────────
     // Separate on/off to avoid accidental lamp cut during cooldown cycle.

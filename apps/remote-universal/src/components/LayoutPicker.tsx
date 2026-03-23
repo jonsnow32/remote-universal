@@ -1,61 +1,57 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import type { LayoutVariant } from '../types/navigation';
+import { getLayoutsForDeviceType } from '@remote/device-sdk';
+import type { DeviceType } from '@remote/core';
 
-interface LayoutOption {
-  id: LayoutVariant;
-  title: string;
-  subtitle: string;
-  accentColor: string;
-  isDefault?: boolean;
+// Derive an accent color from the layout id prefix (brand or universal)
+const BRAND_ACCENT: Record<string, string> = {
+  samsung:   '#1428A0',
+  lg:        '#C8142A',
+  daikin:    '#0097CC',
+  universal: '#4FC3F7',
+};
+
+function accentForId(id: string): string {
+  const prefix = id.split('-')[0];
+  return BRAND_ACCENT[prefix] ?? '#4FC3F7';
 }
-
-const LAYOUTS: LayoutOption[] = [
-  { id: 'universal', title: 'Universal', subtitle: 'All controls — recommended', accentColor: '#4FC3F7', isDefault: true },
-  { id: 'simple', title: 'Simple', subtitle: 'Power, Vol, Ch, OK only', accentColor: '#00C9A7' },
-  { id: 'brand', title: 'Samsung Full', subtitle: 'Brand-specific layout', accentColor: '#FFB347' },
-  { id: 'custom', title: 'Custom', subtitle: 'Build your own', accentColor: '#6C63FF' },
-];
 
 interface Props {
-  selected: LayoutVariant;
-  brandName?: string;
-  onSelect: (variant: LayoutVariant) => void;
+  deviceType: DeviceType;
+  selected: string;
+  onSelect: (layoutId: string) => void;
 }
 
-export function LayoutPicker({ selected, brandName, onSelect }: Props): React.ReactElement {
-  const options = LAYOUTS.map(l =>
-    l.id === 'brand' && brandName
-      ? { ...l, title: `${brandName} Full` }
-      : l
-  );
+export function LayoutPicker({ deviceType, selected, onSelect }: Props): React.ReactElement {
+  const layouts = getLayoutsForDeviceType(deviceType);
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Choose Layout</Text>
-      {options.map((option) => {
-        const isSelected = selected === option.id;
+      {layouts.map((layout) => {
+        const isSelected = selected === layout.id;
+        const accent = accentForId(layout.id);
+        const isUniversal = layout.id.startsWith('universal-');
         return (
           <TouchableOpacity
-            key={option.id}
-            style={[
-              styles.option,
-              isSelected && { borderColor: option.accentColor },
-            ]}
-            onPress={() => onSelect(option.id)}
+            key={layout.id}
+            style={[styles.option, isSelected && { borderColor: accent }]}
+            onPress={() => onSelect(layout.id)}
             activeOpacity={0.7}
           >
-            <View style={[styles.accent, { backgroundColor: option.accentColor }]} />
+            <View style={[styles.accent, { backgroundColor: accent }]} />
             <View style={styles.content}>
               <View style={styles.titleRow}>
-                <Text style={styles.optionTitle}>{option.title}</Text>
-                {option.isDefault && (
-                  <View style={[styles.defaultBadge, { backgroundColor: option.accentColor + '22' }]}>
-                    <Text style={[styles.defaultText, { color: option.accentColor }]}>Default</Text>
+                <Text style={styles.optionTitle}>{layout.name}</Text>
+                {isUniversal && (
+                  <View style={[styles.badge, { backgroundColor: accent + '22' }]}>
+                    <Text style={[styles.badgeText, { color: accent }]}>Universal</Text>
                   </View>
                 )}
               </View>
-              <Text style={styles.subtitle}>{option.subtitle}</Text>
+              <Text style={styles.subtitle}>
+                {isUniversal ? 'Works with any compatible device' : 'Brand-specific controls'}
+              </Text>
             </View>
           </TouchableOpacity>
         );
@@ -99,12 +95,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  defaultBadge: {
+  badge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 4,
   },
-  defaultText: {
+  badgeText: {
     fontSize: 11,
     fontWeight: '700',
   },
@@ -114,3 +110,4 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 });
+

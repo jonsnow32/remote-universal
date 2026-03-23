@@ -3,6 +3,7 @@ import type { RemoteLayoutDefinition } from '@remote/core';
 export const samsungTVLayout: RemoteLayoutDefinition = {
   id: 'samsung-tv',
   name: 'Samsung TV',
+  deviceType: 'tv',
   sections: [
     // ── Power ───────────────────────────────────────────────────────────────
     {

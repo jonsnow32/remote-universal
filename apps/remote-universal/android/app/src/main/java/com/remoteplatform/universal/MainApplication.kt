@@ -18,6 +18,7 @@ import expo.modules.ReactNativeHostWrapper
 import com.remoteplatform.nativemodules.SamsungTizenPairingPackage
 import com.remoteplatform.nativemodules.AndroidTVPackage
 import com.remoteplatform.nativemodules.IRBlasterPackage
+import com.remoteplatform.nativemodules.MicStreamPackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -31,6 +32,7 @@ class MainApplication : Application(), ReactApplication {
                     add(SamsungTizenPairingPackage())
                 add(AndroidTVPackage())
                 add(IRBlasterPackage())
+                add(MicStreamPackage())
         }
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"

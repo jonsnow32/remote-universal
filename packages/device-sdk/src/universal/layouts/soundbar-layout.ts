@@ -8,6 +8,7 @@ import type { RemoteLayoutDefinition } from '@remote/core';
 export const universalSoundbarLayout: RemoteLayoutDefinition = {
   id: 'universal-soundbar',
   name: 'Soundbar (Universal)',
+  deviceType: 'soundbar',
   sections: [
     // ── Power ───────────────────────────────────────────────────────────────
     {

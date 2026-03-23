@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.remoteplatform.universal'
+    namespace 'com.streamless.remote'
     defaultConfig {
-        applicationId 'com.remoteplatform.universal'
+        applicationId 'com.streamless.remote'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
@@ -128,7 +128,8 @@ android {
     splits {
         abi {
             reset()
-            enable true
+            // Disable splits for AAB (bundleRelease) — AAB handles multi-arch natively
+            enable gradle.startParameter.taskNames.any { it.contains("assemble") }
             universalApk false
             include "arm64-v8a", "armeabi-v7a", "x86_64", "x86"
         }
@@ -163,6 +164,14 @@ android {
             android.packagingOptions[prop] += it
         }
     }
+}
+
+configurations.configureEach {
+    // Exclude the Amazon Appstore SDK pulled in by react-native-purchases (RevenueCat).
+    // We only target Google Play, so the Amazon store variant is unnecessary and
+    // triggers Play Protect false positives.
+    exclude group: "com.amazon.device", module: "amazon-appstore-sdk"
+    exclude group: "com.revenuecat.purchases", module: "purchases-store-amazon"
 }
 
 dependencies {

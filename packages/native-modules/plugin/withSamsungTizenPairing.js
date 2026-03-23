@@ -19,7 +19,7 @@ const { withMainApplication, withDangerousMod } = require('@expo/config-plugins'
 const path = require('path');
 const fs = require('fs');
 
-const MODULE_PACKAGE = 'com.remoteplatform.nativemodules';
+const MODULE_PACKAGE = 'com.streamless.nativemodules';
 const IMPORT_LINE = `import ${MODULE_PACKAGE}.SamsungTizenPairingPackage`;
 
 const KOTLIN_SRC_DIR = path.resolve(__dirname, '..', 'android');

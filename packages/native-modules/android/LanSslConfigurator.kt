@@ -1,4 +1,4 @@
-package com.remoteplatform.nativemodules
+package com.streamless.nativemodules
 
 import okhttp3.OkHttpClient
 import java.security.SecureRandom

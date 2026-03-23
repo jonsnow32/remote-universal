@@ -1,4 +1,4 @@
-package com.remoteplatform.universal
+package com.streamless.remote
 
 import android.app.Application
 import android.content.res.Configuration
@@ -15,10 +15,10 @@ import com.facebook.react.defaults.DefaultReactNativeHost
 
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
-import com.remoteplatform.nativemodules.SamsungTizenPairingPackage
-import com.remoteplatform.nativemodules.AndroidTVPackage
-import com.remoteplatform.nativemodules.IRBlasterPackage
-import com.remoteplatform.nativemodules.MicStreamPackage
+import com.streamless.nativemodules.SamsungTizenPairingPackage
+import com.streamless.nativemodules.AndroidTVPackage
+import com.streamless.nativemodules.IRBlasterPackage
+import com.streamless.nativemodules.MicStreamPackage
 
 class MainApplication : Application(), ReactApplication {
 

@@ -1,4 +1,4 @@
-package com.remoteplatform.nativemodules
+package com.streamless.nativemodules
 
 import com.facebook.react.BaseReactPackage
 import com.facebook.react.bridge.NativeModule

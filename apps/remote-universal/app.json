@@ -8,7 +8,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.remoteplatform.universal",
+      "bundleIdentifier": "com.streamless.remote",
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
@@ -17,7 +17,7 @@
       }
     },
     "android": {
-      "package": "com.remoteplatform.universal",
+      "package": "com.streamless.remote",
       "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",

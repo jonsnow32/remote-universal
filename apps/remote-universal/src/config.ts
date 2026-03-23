@@ -23,7 +23,7 @@ export interface AppConfig {
 export const appConfig: AppConfig = {
   brandId: 'universal',
   appName: 'Universal Remote',
-  bundleId: 'com.remoteplatform.universal',
+  bundleId: 'com.streamless.remote',
   // Set EXPO_PUBLIC_API_BASE_URL in .env to your Mac's LAN IP when testing on a real device.
   // Example: EXPO_PUBLIC_API_BASE_URL=http://192.168.1.10:3000
   apiBaseUrl: (process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3000').replace(/\/$/, ''),

@@ -21,7 +21,7 @@ const { withAndroidManifest, withMainApplication, withDangerousMod } =
 const path = require('path');
 const fs = require('fs');
 
-const MODULE_PACKAGE = 'com.remoteplatform.nativemodules';
+const MODULE_PACKAGE = 'com.streamless.nativemodules';
 const IMPORT_LINE = `import ${MODULE_PACKAGE}.IRBlasterPackage`;
 
 /** Source directory containing the two .kt files shipped with this package. */

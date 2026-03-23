@@ -1,4 +1,4 @@
-package com.remoteplatform.nativemodules
+package com.streamless.nativemodules
 
 import android.Manifest
 import android.content.pm.PackageManager

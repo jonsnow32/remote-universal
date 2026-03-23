@@ -1,4 +1,4 @@
-package com.remoteplatform.nativemodules
+package com.streamless.nativemodules
 
 import android.content.Context
 import android.util.Base64

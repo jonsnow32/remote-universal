@@ -27,7 +27,7 @@
       <dict>
         <key>CFBundleURLSchemes</key>
         <array>
-          <string>com.remoteplatform.universal</string>
+          <string>com.streamless.remote</string>
         </array>
       </dict>
     </array>

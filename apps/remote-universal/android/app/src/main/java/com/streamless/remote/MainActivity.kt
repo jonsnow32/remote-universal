@@ -1,4 +1,4 @@
-package com.remoteplatform.universal
+package com.streamless.remote
 
 import android.os.Build
 import android.os.Bundle

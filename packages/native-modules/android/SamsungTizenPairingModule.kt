@@ -1,4 +1,4 @@
-package com.remoteplatform.nativemodules
+package com.streamless.nativemodules
 
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.websocket.WebSocketModule

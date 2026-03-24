@@ -17,6 +17,7 @@
 
 import { useCallback, useRef } from 'react';
 import { IRModule } from '@remote/native-modules';
+import { DaikinACStateTracker } from '@remote/device-sdk';
 import { resolveIRCommand } from '../lib/irApi';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -51,6 +52,31 @@ function cacheKey(params: IRResolverParams, command: string): CacheKey {
   return `${params.brand}:${params.category}:${params.model ?? ''}:${command}`;
 }
 
+// ─── Brand-local IR resolvers ─────────────────────────────────────────────────
+
+/**
+ * Per-brand local IR encoder map.
+ * Keyed by brand slug + category (e.g. 'daikin:ac').
+ * Each entry is a function that accepts a command name and returns a Pronto Hex
+ * string, or null if the command is not handled locally.
+ */
+const localResolvers: Record<string, (command: string) => string | null> = {};
+
+// Daikin AC — local state-tracking encoder.
+// Used when the backend IR database has no matching code.
+const daikinTracker = new DaikinACStateTracker();
+localResolvers['daikin:ac'] = (command: string) => daikinTracker.applyCommand(command);
+
+function resolveLocally(
+  brand: string,
+  category: string,
+  command: string,
+): string | null {
+  const key = `${brand.toLowerCase()}:${category.toLowerCase()}`;
+  const resolver = localResolvers[key];
+  return resolver ? resolver(command) : null;
+}
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useIRResolver(params: IRResolverParams): IRResolverHandle {
@@ -76,16 +102,27 @@ export function useIRResolver(params: IRResolverParams): IRResolverHandle {
     let payload: string | null | undefined = sessionCache.get(key);
 
     if (payload === undefined) {
-      // 3. Resolve from backend
-      const result = await resolveIRCommand({
-        brand:     p.brand,
-        category:  p.category,
-        model:     p.model,
-        command,
-        codesetId: p.codesetId,
-      });
-      payload = result.payload;
-      sessionCache.set(key, payload);
+      // 3a. Try backend resolver
+      let backendPayload: string | null = null;
+      try {
+        const result = await resolveIRCommand({
+          brand:     p.brand,
+          category:  p.category,
+          model:     p.model,
+          command,
+          codesetId: p.codesetId,
+        });
+        backendPayload = result.payload;
+      } catch {
+        // Backend unreachable — fall through to local resolver
+      }
+
+      // 3b. Fall back to local brand encoder (e.g. Daikin state-machine)
+      payload = backendPayload ?? resolveLocally(p.brand, p.category, command);
+      // Only cache backend hits; local codes encode live state and must not be cached
+      if (backendPayload !== null) {
+        sessionCache.set(key, backendPayload);
+      }
     }
 
     if (!payload) {

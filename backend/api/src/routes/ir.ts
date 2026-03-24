@@ -12,7 +12,7 @@
 
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { getSupabaseClient } from '../../device-db/src/db';
+import { getSupabaseClient } from '../lib/supabase';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -46,6 +46,20 @@ const FUNCTION_ALIASES: Record<string, string[]> = {
   HOME:         ['HOME', 'KEY_HOME', 'KEY_HOMEPAGE'],
   MENU:         ['MENU', 'KEY_MENU', 'SETTINGS'],
   INPUT:        ['INPUT', 'SOURCE', 'INPUT_SELECT', 'KEY_INPUT'],
+  // ── AC commands ──────────────────────────────────────────────────────────
+  TEMP_UP:      ['TEMP_UP', 'TEMPERATURE_UP', 'TEMP_INC', 'TEMP_INCREASE', 'WARMER'],
+  TEMP_DOWN:    ['TEMP_DOWN', 'TEMPERATURE_DOWN', 'TEMP_DEC', 'TEMP_DECREASE', 'COOLER'],
+  MODE_COOL:    ['MODE_COOL', 'COOL', 'COOL_MODE', 'SET_COOL', 'AC_COOL'],
+  MODE_HEAT:    ['MODE_HEAT', 'HEAT', 'HEAT_MODE', 'SET_HEAT', 'AC_HEAT'],
+  MODE_DRY:     ['MODE_DRY', 'DRY', 'DRY_MODE', 'SET_DRY', 'DEHUMIDIFY'],
+  MODE_FAN:     ['MODE_FAN', 'FAN_ONLY', 'FAN_MODE', 'SET_FAN_ONLY'],
+  MODE_AUTO:    ['MODE_AUTO', 'AUTO', 'AUTO_MODE', 'SET_AUTO'],
+  FAN_AUTO:     ['FAN_AUTO', 'FAN_SPEED_AUTO', 'FAN_AUTOMATIC', 'FAN_SPEED_0'],
+  FAN_LOW:      ['FAN_LOW', 'FAN_QUIET', 'FAN_SPEED_1', 'FAN_SPEED_LOW'],
+  FAN_MED:      ['FAN_MED', 'FAN_MEDIUM', 'FAN_SPEED_3', 'FAN_SPEED_MED'],
+  FAN_HIGH:     ['FAN_HIGH', 'FAN_MAX', 'FAN_SPEED_5', 'FAN_SPEED_HIGH'],
+  SWING_ON:     ['SWING_ON', 'SWING_AUTO', 'SWING_VERTICAL_ON', 'LOUVER_ON', 'VANE_ON'],
+  SWING_OFF:    ['SWING_OFF', 'SWING_VERTICAL_OFF', 'LOUVER_OFF', 'VANE_OFF'],
 };
 
 function expandAliases(name: string): string[] {

@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@remote/ui-kit';
+import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import { theme } from './theme';
+import { _initIRLocalDb } from './lib/irLocalDb';
 
 // Screens — 3 core screens (Discovery-first, no login wall)
 import { DiscoveryScreen } from './screens/DiscoveryScreen';
@@ -30,27 +32,45 @@ const navTheme = {
 
 const queryClient = new QueryClient();
 
+/**
+ * Captures the SQLiteDatabase from its context and stores it in the irLocalDb
+ * singleton so all irApi.ts calls can use the local DB without React context.
+ * Must be rendered inside the <SQLiteProvider> tree.
+ */
+function IRDbBridge(): null {
+  const db = useSQLiteContext();
+  useEffect(() => { _initIRLocalDb(db); }, [db]);
+  return null;
+}
+
 export default function App(): React.ReactElement {
   return (
     <SafeAreaProvider>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider theme={theme}>
-          <NavigationContainer theme={navTheme}>
-            <Stack.Navigator
-              initialRouteName="Discovery"
-              screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
-            >
-              <Stack.Screen name="Discovery" component={DiscoveryScreen} />
-              <Stack.Screen name="Remote" component={RemoteScreen} />
-              <Stack.Screen
-                name="Settings"
-                component={SettingsScreen}
-                options={{ animation: 'slide_from_bottom', presentation: 'modal' }}
-              />
-            </Stack.Navigator>
-          </NavigationContainer>
-        </ThemeProvider>
-      </QueryClientProvider>
+      <SQLiteProvider
+        databaseName="ir.db"
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        assetSource={{ assetId: require('../assets/ir.db') }}
+      >
+        <IRDbBridge />
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider theme={theme}>
+            <NavigationContainer theme={navTheme}>
+              <Stack.Navigator
+                initialRouteName="Discovery"
+                screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
+              >
+                <Stack.Screen name="Discovery" component={DiscoveryScreen} />
+                <Stack.Screen name="Remote" component={RemoteScreen} />
+                <Stack.Screen
+                  name="Settings"
+                  component={SettingsScreen}
+                  options={{ animation: 'slide_from_bottom', presentation: 'modal' }}
+                />
+              </Stack.Navigator>
+            </NavigationContainer>
+          </ThemeProvider>
+        </QueryClientProvider>
+      </SQLiteProvider>
     </SafeAreaProvider>
   );
 }

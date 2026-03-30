@@ -1,9 +1,19 @@
 /**
- * Client for the backend IR code lookup API (/api/ir/*).
+ * Client for IR code lookup.
  *
- * All functions throw on network or server errors.
+ * Strategy: use the bundled local SQLite database (irLocalDb) when it has been
+ * initialised (i.e. after the SQLiteProvider in App.tsx mounts).  Falls back to
+ * the backend HTTP API if the local DB is not yet ready or has no data — useful
+ * during development before running the export script.
  */
 import { getApiBaseUrl } from './apiUrl';
+import {
+  isIRLocalDbReady,
+  fetchIRBrands as localFetchIRBrands,
+  fetchIRCodesets as localFetchIRCodesets,
+  fetchIRCodes as localFetchIRCodes,
+  resolveIRCommand as localResolveIRCommand,
+} from './irLocalDb';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -75,6 +85,9 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 
 /** List brands that have IR codes for a given device category. */
 export async function fetchIRBrands(category?: string): Promise<IRBrandEntry[]> {
+  if (isIRLocalDbReady()) {
+    return localFetchIRBrands(category);
+  }
   const qs = category ? `?category=${encodeURIComponent(category)}` : '';
   const data = await get<{ brands: IRBrandEntry[] }>(`/api/ir/brands${qs}`);
   return data.brands;
@@ -89,6 +102,9 @@ export async function fetchIRCodesets(
   category: string,
   model?: string,
 ): Promise<IRCodeset[]> {
+  if (isIRLocalDbReady()) {
+    return localFetchIRCodesets(brand, category, model);
+  }
   const params = new URLSearchParams({ brand, category });
   if (model) params.set('model', model);
   const data = await get<{ codesets: IRCodeset[] }>(`/api/ir/codesets?${params.toString()}`);
@@ -97,6 +113,9 @@ export async function fetchIRCodesets(
 
 /** List all IR command codes in a codeset (for display / brute-force). */
 export async function fetchIRCodes(codesetId: string): Promise<IRCodeEntry[]> {
+  if (isIRLocalDbReady()) {
+    return localFetchIRCodes(codesetId);
+  }
   const data = await get<{ codes: IRCodeEntry[] }>(
     `/api/ir/codes?codesetId=${encodeURIComponent(codesetId)}`,
   );
@@ -116,6 +135,9 @@ export async function resolveIRCommand(params: {
   command: string;
   codesetId?: string;
 }): Promise<IRResolveResult> {
+  if (isIRLocalDbReady()) {
+    return localResolveIRCommand(params);
+  }
   try {
     const result = await post<IRResolveResult>('/api/ir/resolve', params);
     return result;

@@ -74,5 +74,9 @@
     <string>Dark</string>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Allow Universal Remote to use speech recognition to control your devices with voice commands.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Allow Universal Remote to use the microphone for voice commands.</string>
   </dict>
 </plist>

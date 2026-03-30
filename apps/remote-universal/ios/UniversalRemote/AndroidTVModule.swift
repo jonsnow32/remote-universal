@@ -61,7 +61,7 @@ private func readVarint(_ data: Data, from start: Int) -> (Int64, Int)? {
 }
 
 private func decodeMessage(_ data: Data) -> [Int: Any] {
-  var result: [Int: Any] = []; var pos = 0
+  var result: [Int: Any] = [:]; var pos = 0
   while pos < data.count {
     guard let (tagVal, p1) = readVarint(data, from: pos) else { break }
     pos = p1
@@ -143,9 +143,8 @@ private func readDerLen(_ data: Data, _ pos: Int) -> (Int, Int) {
 // ──────────────────────────────────────────────────────────────────────
 
 @objc(AndroidTV)
-class AndroidTVModule: NSObject, RCTBridgeModule {
+class AndroidTVModule: NSObject {
 
-  @objc static func moduleName() -> String! { "AndroidTV" }
   @objc static func requiresMainQueueSetup() -> Bool { false }
 
   private let defaults  = UserDefaults.standard
@@ -387,8 +386,8 @@ class AndroidTVModule: NSObject, RCTBridgeModule {
       kCFStreamSSLValidatesCertificateChain: kCFBooleanFalse!,
       kCFStreamSSLIsServer:                  kCFBooleanFalse!,
     ]
-    CFReadStreamSetProperty(r,  kCFStreamPropertySSLSettings, sslSettings as CFDictionary)
-    CFWriteStreamSetProperty(w, kCFStreamPropertySSLSettings, sslSettings as CFDictionary)
+    CFReadStreamSetProperty(r,  CFStreamPropertyKey(kCFStreamPropertySSLSettings), sslSettings as CFDictionary)
+    CFWriteStreamSetProperty(w, CFStreamPropertyKey(kCFStreamPropertySSLSettings), sslSettings as CFDictionary)
 
     guard CFReadStreamOpen(r), CFWriteStreamOpen(w) else {
       throw ATVError("Failed to open TLS streams to \(host):\(port)")
@@ -410,8 +409,14 @@ class AndroidTVModule: NSObject, RCTBridgeModule {
       Thread.sleep(forTimeInterval: 0.05)
     }
 
-    // Extract peer certificate for secret computation (available after handshake)
-    let peerCert = (CFReadStreamCopyProperty(r, kCFStreamPropertySSLPeerCertificates) as? [SecCertificate])?.first
+    // Extract peer certificate (kCFStreamPropertySSLPeerCertificates unavailable in iOS Swift;
+    // use kCFStreamPropertySSLPeerTrust → SecTrust → first certificate instead)
+    let peerCert: SecCertificate?
+    if let trustRef = CFReadStreamCopyProperty(r, CFStreamPropertyKey(kCFStreamPropertySSLPeerTrust)) {
+      peerCert = (SecTrustCopyCertificateChain(trustRef as! SecTrust) as? [SecCertificate])?.first
+    } else {
+      peerCert = nil
+    }
 
     return (r, w, peerCert)
   }
@@ -419,12 +424,13 @@ class AndroidTVModule: NSObject, RCTBridgeModule {
   // ── Stream I/O ─────────────────────────────────────────────────────
 
   private func streamWrite(_ stream: CFWriteStream, data: Data) throws {
-    let bytes = [UInt8](data)
     var written = 0
-    while written < bytes.count {
-      let n = CFWriteStreamWrite(stream,
-                                 UnsafePointer(bytes).advanced(by: written),
-                                 bytes.count - written)
+    while written < data.count {
+      let n = data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> CFIndex in
+        CFWriteStreamWrite(stream,
+                           ptr.baseAddress!.assumingMemoryBound(to: UInt8.self).advanced(by: written),
+                           data.count - written)
+      }
       if n <= 0 { throw ATVError("Write error on TLS stream") }
       written += n
     }
@@ -434,7 +440,9 @@ class AndroidTVModule: NSObject, RCTBridgeModule {
     var buf = [UInt8](repeating: 0, count: count)
     var received = 0
     while received < count {
-      let n = CFReadStreamRead(stream, &buf + received, count - received)
+      let n = buf.withUnsafeMutableBufferPointer { ptr -> CFIndex in
+        CFReadStreamRead(stream, ptr.baseAddress!.advanced(by: received), count - received)
+      }
       if n <= 0 { return nil }
       received += n
     }
@@ -607,13 +615,21 @@ class AndroidTVModule: NSObject, RCTBridgeModule {
       throw ATVError("Failed to store certificate in keychain: OSStatus \(addStatus)")
     }
 
-    // 5. Construct an identity from the cert + its matching private key in keychain
-    var identity: SecIdentity?
-    let idStatus = SecIdentityCreateWithCertificate(nil, cert, &identity)
-    guard idStatus == errSecSuccess, let ident = identity else {
-      throw ATVError("SecIdentityCreateWithCertificate failed: OSStatus \(idStatus)")
+    // 5. Retrieve the identity (cert + matching private key) from the keychain.
+    // SecIdentityCreateWithCertificate is macOS-only; on iOS we query the keychain
+    // which automatically links a certificate to its matching stored private key.
+    let identQuery: [CFString: Any] = [
+      kSecClass:         kSecClassIdentity,
+      kSecReturnRef:     kCFBooleanTrue!,
+      kSecMatchLimit:    kSecMatchLimitOne,
+      kSecMatchItemList: [cert] as CFArray,
+    ]
+    var identRef: CFTypeRef?
+    let idStatus = SecItemCopyMatching(identQuery as CFDictionary, &identRef)
+    guard idStatus == errSecSuccess, let ident = identRef else {
+      throw ATVError("SecItemCopyMatching for identity failed: OSStatus \(idStatus)")
     }
-    return ident
+    return (ident as! SecIdentity)
   }
 
   /// Build a minimal self-signed X.509 v3 DER certificate.

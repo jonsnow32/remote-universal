@@ -219,7 +219,8 @@ class USBIRBlasterModule(private val reactContext: ReactApplicationContext) :
             emitEvent(EVENT_PERM_GRANTED, null)
         } else {
             val intent = PendingIntent.getBroadcast(
-                reactContext, 0, Intent(ACTION_USB_PERMISSION),
+                reactContext, 0,
+                Intent(ACTION_USB_PERMISSION).apply { setPackage(reactContext.packageName) },
                 PendingIntent.FLAG_UPDATE_CURRENT or permissionFlags()
             )
             usbManager.requestPermission(device, intent)
@@ -301,11 +302,13 @@ class USBIRBlasterModule(private val reactContext: ReactApplicationContext) :
         }
         if (usbManager.hasPermission(device)) {
             if (deviceConnection == null) openConnection(device)
+            emitEvent(EVENT_PERM_GRANTED, null)
             promise.resolve(true)
             return
         }
         val intent = PendingIntent.getBroadcast(
-            reactContext, 0, Intent(ACTION_USB_PERMISSION),
+            reactContext, 0,
+            Intent(ACTION_USB_PERMISSION).apply { setPackage(reactContext.packageName) },
             PendingIntent.FLAG_UPDATE_CURRENT or permissionFlags()
         )
         usbManager.requestPermission(device, intent)

@@ -29,6 +29,10 @@
 # Expo modules
 -keep class expo.modules.** { *; }
 
+# expo-sqlite: class only present at JVM level, suppress R8 missing-class error
+-dontwarn expo.modules.kotlin.runtime.Runtime
+-dontwarn expo.modules.kotlin.runtime.**
+
 # ── Native modules (loaded by name via RN bridge — must not be renamed/stripped) ──
 -keep class com.streamless.nativemodules.** { *; }
 -keep class com.streamless.remote.** { *; }

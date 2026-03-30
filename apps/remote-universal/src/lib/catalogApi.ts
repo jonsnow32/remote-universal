@@ -1,4 +1,4 @@
-import { catalogClient } from './supabase';
+import { getCatalogClient } from './supabase';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,7 +22,7 @@ export interface CatalogModel {
 
 /** Fetch all brands sorted alphabetically by name. */
 export async function fetchAllBrands(): Promise<CatalogBrand[]> {
-  const { data, error } = await catalogClient
+  const { data, error } = await getCatalogClient()
     .from('brands')
     .select('id, name, slug, logo_uri')
     .order('name');
@@ -36,7 +36,7 @@ export async function fetchAllBrands(): Promise<CatalogBrand[]> {
  */
 export async function fetchBrandsByCategory(category: string): Promise<CatalogBrand[]> {
   // Step 1: get distinct brand_ids for this category
-  const { data: modelRows, error: e1 } = await catalogClient
+  const { data: modelRows, error: e1 } = await getCatalogClient()
     .from('device_models')
     .select('brand_id')
     .eq('category', category);
@@ -47,7 +47,7 @@ export async function fetchBrandsByCategory(category: string): Promise<CatalogBr
   if (brandIds.length === 0) return [];
 
   // Step 2: fetch brand details
-  const { data: brands, error: e2 } = await catalogClient
+  const { data: brands, error: e2 } = await getCatalogClient()
     .from('brands')
     .select('id, name, slug, logo_uri')
     .in('id', brandIds)
@@ -65,7 +65,7 @@ export async function fetchModelsByBrand(
   brandSlug: string,
   category?: string,
 ): Promise<CatalogModel[]> {
-  let query = catalogClient
+  let query = getCatalogClient()
     .from('device_models')
     .select('id, brand_id, model_number, model_name, protocols, category')
     .eq('brand_id', brandSlug)

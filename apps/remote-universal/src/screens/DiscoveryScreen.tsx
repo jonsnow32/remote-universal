@@ -146,6 +146,39 @@ export function DiscoveryScreen(): React.ReactElement {
         </Text>
       </TouchableOpacity>
 
+      {/* USB IR Banner — rendered outside FlatList for reliable Android touch handling */}
+      {(usb.isConnected || usb.needsPermission) && (
+        <View style={styles.usbBannerWrap}>
+          <TouchableOpacity
+            style={[
+              styles.usbBanner,
+              usb.isConnected ? styles.usbBannerReady : styles.usbBannerPending,
+            ]}
+            onPress={usb.isConnected ? openAddSheetForIR : () => void usb.requestPermission()}
+            activeOpacity={0.8}
+          >
+            <View style={styles.usbBannerIcon}>
+              <Ionicons
+                name={usb.isConnected ? 'radio-outline' : 'warning-outline'}
+                size={22}
+                color={usb.isConnected ? '#00C9A7' : '#F6AD55'}
+              />
+            </View>
+            <View style={styles.usbBannerText}>
+              <Text style={styles.usbBannerTitle}>
+                {usb.isConnected
+                  ? (usb.deviceName ?? 'USB IR Blaster')
+                  : 'IR Blaster detected — needs access'}
+              </Text>
+              <Text style={styles.usbBannerSub}>
+                {usb.isConnected ? 'Tap to add an IR device' : 'Tap to grant permission'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#4A5568" />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Device List */}
       <FlatList
         data={devices}
@@ -153,37 +186,6 @@ export function DiscoveryScreen(): React.ReactElement {
         renderItem={renderDevice}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
-        ListHeaderComponent={
-          (usb.isConnected || usb.needsPermission) ? (
-            <TouchableOpacity
-              style={[
-                styles.usbBanner,
-                usb.isConnected ? styles.usbBannerReady : styles.usbBannerPending,
-              ]}
-              onPress={usb.isConnected ? openAddSheetForIR : () => void usb.requestPermission()}
-              activeOpacity={0.8}
-            >
-              <View style={styles.usbBannerIcon}>
-                <Ionicons
-                  name={usb.isConnected ? 'radio-outline' : 'warning-outline'}
-                  size={22}
-                  color={usb.isConnected ? '#00C9A7' : '#F6AD55'}
-                />
-              </View>
-              <View style={styles.usbBannerText}>
-                <Text style={styles.usbBannerTitle}>
-                  {usb.isConnected
-                    ? (usb.deviceName ?? 'USB IR Blaster')
-                    : 'IR Blaster detected — needs access'}
-                </Text>
-                <Text style={styles.usbBannerSub}>
-                  {usb.isConnected ? 'Tap to add an IR device' : 'Tap to grant permission'}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#4A5568" />
-            </TouchableOpacity>
-          ) : null
-        }
         ListEmptyComponent={
           !scanning ? (
             <Text style={styles.emptyText}>No devices detected yet. Make sure your devices are powered on and on the same network.</Text>
@@ -282,13 +284,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
+  usbBannerWrap: {
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+  },
   usbBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    marginBottom: 12,
     borderWidth: 1,
   },
   usbBannerReady: {

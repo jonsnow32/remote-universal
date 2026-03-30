@@ -7,32 +7,28 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "clean": "turbo run clean",
-
     "backend:dev": "turbo run dev --filter=@remote/api --filter=@remote/ota-service --filter=@remote/tenant-service --parallel",
     "backend:build": "turbo run build --filter=@remote/api --filter=@remote/ota-service --filter=@remote/tenant-service --filter=@remote/device-db",
-
     "api:dev": "pnpm --filter @remote/api dev",
     "api:build": "pnpm --filter @remote/api build",
     "api:start": "pnpm --filter @remote/api start",
-
     "ota:dev": "pnpm --filter @remote/ota-service dev",
     "ota:build": "pnpm --filter @remote/ota-service build",
     "ota:start": "pnpm --filter @remote/ota-service start",
-
     "tenant:dev": "pnpm --filter @remote/tenant-service dev",
     "tenant:build": "pnpm --filter @remote/tenant-service build",
     "tenant:start": "pnpm --filter @remote/tenant-service start",
-
     "db:dev": "pnpm --filter @remote/device-db dev",
     "db:crawl": "pnpm --filter @remote/device-db crawl",
     "db:migrate": "pnpm --filter @remote/device-db migrate",
-    "db:migrate:dry": "pnpm --filter @remote/device-db migrate:dry"
+    "db:migrate:dry": "pnpm --filter @remote/device-db migrate:dry",
+    "ios": "pnpm --filter remote-universal dev"
   },
   "devDependencies": {
-    "turbo": "latest",
-    "typescript": "^5.0.0",
+    "eslint": "^8.0.0",
     "prettier": "^3.0.0",
-    "eslint": "^8.0.0"
+    "turbo": "latest",
+    "typescript": "^5.0.0"
   },
   "packageManager": "pnpm@9.0.0",
   "pnpm": {
@@ -41,4 +37,3 @@
     }
   }
 }
-                                  

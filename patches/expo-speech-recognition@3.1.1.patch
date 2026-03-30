@@ -1,0 +1,14 @@
+diff --git a/build/ExpoSpeechRecognitionModule.js b/build/ExpoSpeechRecognitionModule.js
+index f3ea8674b37c378266994fcc84f8fc5cc54cd826..0000000000000000000000000000000000000000 100644
+--- a/build/ExpoSpeechRecognitionModule.js
++++ b/build/ExpoSpeechRecognitionModule.js
+@@ -4,6 +4,5 @@ import { requireNativeModule } from "expo";
+ export const ExpoSpeechRecognitionModule = requireNativeModule("ExpoSpeechRecognition");
+-const stop = ExpoSpeechRecognitionModule.stop;
+-const abort = ExpoSpeechRecognitionModule.abort;
+-ExpoSpeechRecognitionModule.abort = () => abort();
+-ExpoSpeechRecognitionModule.stop = () => stop();
++// JSI native module properties are non-writable; the original stop/abort
++// overwrite throws "property is not writable" in Hermes strict mode.
++// expo-modules-core JSI functions are self-bound — no wrapper needed.
+ //# sourceMappingURL=ExpoSpeechRecognitionModule.js.map

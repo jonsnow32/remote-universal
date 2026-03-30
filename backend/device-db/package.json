@@ -8,7 +8,9 @@
     "start": "node dist/index.js",
     "crawl": "ts-node src/index.ts --run-once",
     "migrate": "ts-node src/migrate.ts",
-    "migrate:dry": "ts-node src/migrate.ts --dry-run"
+    "migrate:dry": "ts-node src/migrate.ts --dry-run",
+    "export-sqlite": "ts-node src/export-sqlite.ts",
+    "export-sqlite:schema": "ts-node src/export-sqlite.ts --schema"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.38.0",
@@ -18,8 +20,10 @@
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.0.0",
     "@types/node-cron": "^3.0.11",
+    "better-sqlite3": "^12.8.0",
     "ts-node": "^10.9.0",
     "typescript": "^5.0.0"
   }

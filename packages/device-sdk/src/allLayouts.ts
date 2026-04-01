@@ -1,6 +1,7 @@
 import { samsungTVLayout } from './samsung';
 import { lgTVLayout } from './lg';
 import { daikinACLayout } from './daikin';
+import { shieldTVLayout } from './shield';
 import { allUniversalLayouts } from './universal';
 import type { RemoteLayoutDefinition } from '@remote/core';
 import type { DeviceType } from '@remote/core';
@@ -10,6 +11,7 @@ export const allBrandLayouts: RemoteLayoutDefinition[] = [
   samsungTVLayout,
   lgTVLayout,
   daikinACLayout,
+  shieldTVLayout,
 ];
 
 /** Combined registry: brand layouts first, then universal fallbacks. */

@@ -12,7 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useAllBrands, useModelsByBrand } from '../hooks/useCatalog';
 import type { CatalogModel } from '../hooks/useCatalog';
 import { ProtocolPicker } from './ProtocolPicker';

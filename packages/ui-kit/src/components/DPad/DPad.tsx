@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { View, Text, Animated, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import type * as HapticsType from 'expo-haptics';
 
 export interface DPadProps {

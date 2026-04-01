@@ -35,5 +35,8 @@
     "overrides": {
       "@types/react": "^19.1.17"
     }
+  },
+  "dependencies": {
+    "@react-native-vector-icons/ionicons": "^13.0.0"
   }
 }

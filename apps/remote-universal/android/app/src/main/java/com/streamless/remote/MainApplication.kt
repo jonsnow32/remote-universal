@@ -1,4 +1,5 @@
 package com.streamless.remote
+import com.facebook.react.common.assets.ReactFontManager
 
 import android.app.Application
 import android.content.res.Configuration
@@ -18,7 +19,6 @@ import expo.modules.ReactNativeHostWrapper
 import com.streamless.nativemodules.SamsungTizenPairingPackage
 import com.streamless.nativemodules.AndroidTVPackage
 import com.streamless.nativemodules.IRBlasterPackage
-import com.streamless.nativemodules.MicStreamPackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -32,7 +32,6 @@ class MainApplication : Application(), ReactApplication {
                     add(SamsungTizenPairingPackage())
                 add(AndroidTVPackage())
                 add(IRBlasterPackage())
-                add(MicStreamPackage())
         }
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
@@ -48,6 +47,9 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+    // @generated begin xml-fonts-init - expo prebuild (DO NOT MODIFY) sync-da39a3ee5e6b4b0d3255bfef95601890afd80709
+
+    // @generated end xml-fonts-init
     DefaultNewArchitectureEntryPoint.releaseLevel = try {
       ReleaseLevel.valueOf(BuildConfig.REACT_NATIVE_RELEASE_LEVEL.uppercase())
     } catch (e: IllegalArgumentException) {

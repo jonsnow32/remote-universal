@@ -5,10 +5,12 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@remote/ui-kit';
 import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
-import { useFonts } from 'expo-font';
-import { Ionicons } from '@expo/vector-icons';
+import { setDynamicLoadingEnabled } from '@react-native-vector-icons/common';
 import { theme } from './theme';
 import { _initIRLocalDb } from './lib/irLocalDb';
+
+// Disable dynamic (expo-font JS) loading — use native assets/fonts/ instead
+setDynamicLoadingEnabled(false);
 
 // Screens — 3 core screens (Discovery-first, no login wall)
 import { DiscoveryScreen } from './screens/DiscoveryScreen';
@@ -46,10 +48,6 @@ function IRDbBridge(): null {
 }
 
 export default function App(): React.ReactElement {
-  const [fontsLoaded] = useFonts(Ionicons.font);
-
-  if (!fontsLoaded) return <></>;
-
   return (
     <SafeAreaProvider>
       <SQLiteProvider

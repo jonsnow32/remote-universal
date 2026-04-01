@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import type { ConnectionProtocol } from '../types/navigation';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];

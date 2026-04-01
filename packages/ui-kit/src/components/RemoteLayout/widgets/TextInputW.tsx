@@ -9,7 +9,7 @@ import {
   Platform,
 } from 'react-native';
 import type { TextInputWidget } from '@remote/core';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 
 interface Props {
   widget: TextInputWidget;

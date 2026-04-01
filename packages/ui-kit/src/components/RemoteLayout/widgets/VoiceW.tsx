@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import type { VoiceWidget } from '@remote/core';
 import { useTheme } from '../../../theme/ThemeProvider';
 import type * as HapticsType from 'expo-haptics';

@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
 import type { ButtonWidget } from '@remote/core';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useTheme } from '../../../theme/ThemeProvider';
 import type * as HapticsType from 'expo-haptics';
 

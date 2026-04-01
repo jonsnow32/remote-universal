@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { View, Text, PanResponder, Animated, LayoutChangeEvent, StyleSheet } from 'react-native';
 import type { DPadWidget } from '@remote/core';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import type * as HapticsType from 'expo-haptics';
 
 interface Props {

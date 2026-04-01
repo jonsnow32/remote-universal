@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { View, Text, PanResponder, Animated } from 'react-native';
 import type { RockerWidget } from '@remote/core';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import type * as HapticsType from 'expo-haptics';
 
 interface Props {

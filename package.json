@@ -22,6 +22,8 @@
     "db:crawl": "pnpm --filter @remote/device-db crawl",
     "db:migrate": "pnpm --filter @remote/device-db migrate",
     "db:migrate:dry": "pnpm --filter @remote/device-db migrate:dry",
+    "db:export-sqlite": "pnpm --filter @remote/device-db export-sqlite",
+    "db:export-sqlite:schema": "pnpm --filter @remote/device-db export-sqlite:schema",
     "ios": "pnpm --filter remote-universal dev"
   },
   "devDependencies": {

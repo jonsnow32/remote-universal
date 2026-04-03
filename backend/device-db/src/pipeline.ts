@@ -20,6 +20,7 @@ import { parseOEMFetchResult } from './parsers/oem';
 import { normaliseOEMDevice, normaliseIREntries } from './normalise';
 import { deduplicateEntries } from './dedup';
 import { writeEntries } from './writer';
+import { writeIREntries } from './ir-writer';
 import { exportSnapshot } from './snapshot';
 import crypto from 'crypto';
 
@@ -87,6 +88,16 @@ export async function runPipeline(
 
   opts.verbose && console.log(
     `[pipeline] Written: brands=${writeStats.brands} models=${writeStats.models} commands=${writeStats.commands}`
+  );
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Stage 6b: Write IR library tables (ir_brands / ir_codesets / ir_codes)
+  // ──────────────────────────────────────────────────────────────────────
+  const irWriteStats = await writeIREntries(irEntries, client, isDryRun);
+  writeStats.errors.push(...irWriteStats.errors);
+
+  opts.verbose && console.log(
+    `[pipeline] IR library written: brands=${irWriteStats.brands} codesets=${irWriteStats.codesets} codes=${irWriteStats.codes}`
   );
 
   // ──────────────────────────────────────────────────────────────────────

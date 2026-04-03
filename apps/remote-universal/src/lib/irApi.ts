@@ -20,7 +20,7 @@ import {
 export interface IRBrandEntry {
   id: string;
   name: string;
-  category: string;
+  category: string | null;
   catalog_brand_id: string | null;
   priority: number;
   code_count: number;

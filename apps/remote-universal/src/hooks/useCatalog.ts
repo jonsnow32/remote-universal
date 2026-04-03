@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchAllBrands, fetchBrandsByCategory, fetchModelsByBrand } from '../lib/catalogApi';
+import { fetchAllBrands, fetchBrandsByCategory, fetchModelsByBrand, searchModels } from '../lib/catalogApi';
 import type { CatalogBrand, CatalogModel } from '../lib/catalogApi';
 
 export type { CatalogBrand, CatalogModel };
@@ -39,5 +39,19 @@ export function useModelsByBrand(brandSlug: string | null, category?: string | n
     enabled: brandSlug != null,
     staleTime: 30 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
+  });
+}
+
+/**
+ * Search device models by model_number / model_name across all brands.
+ * Only fires when query has at least 2 characters.
+ */
+export function useSearchModels(query: string) {
+  return useQuery<CatalogModel[]>({
+    queryKey: ['catalog', 'search', 'models', query],
+    queryFn: () => searchModels(query),
+    enabled: query.trim().length >= 2,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 }

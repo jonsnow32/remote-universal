@@ -13,7 +13,7 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@react-native-vector-icons/ionicons';
-import { useAllBrands, useModelsByBrand } from '../hooks/useCatalog';
+import { useAllBrands, useModelsByBrand, useSearchModels } from '../hooks/useCatalog';
 import type { CatalogModel } from '../hooks/useCatalog';
 import { ProtocolPicker } from './ProtocolPicker';
 import type { ConnectionProtocol, DeviceCategory } from '../types/navigation';
@@ -85,7 +85,7 @@ const ADDRESS_CONFIG: Partial<Record<ConnectionProtocol, AddressConfig>> = {
 export interface AddDeviceResult {
   brand: string;
   model: string;
-  category: DeviceCategory;
+  category?: DeviceCategory;
   protocol: ConnectionProtocol;
   modelId?: string;
   /** Catalog brand slug (e.g. 'samsung'). Used by IR code resolver. */
@@ -123,6 +123,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
 
   const [step, setStep] = useState<Step>('search');
   const [searchQuery, setSearchQuery] = useState('');
+  const [modelSearchQuery, setModelSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<DeviceCategory | null>(null);
   const [selectedBrand, setSelectedBrand] = useState<string>('');
   const [selectedBrandSlug, setSelectedBrandSlug] = useState<string | null>(null);
@@ -145,6 +146,8 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
 
   const { data: brands, isLoading: brandsLoading } = useAllBrands();
   const { data: models, isLoading: modelsLoading } = useModelsByBrand(selectedBrandSlug);
+  const isSearching = searchQuery.trim().length >= 2;
+  const { data: searchedModels, isLoading: searchModelsLoading } = useSearchModels(searchQuery);
 
   useEffect(() => {
     if (visible) {
@@ -165,6 +168,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
   const resetState = () => {
     setStep('search');
     setSearchQuery('');
+    setModelSearchQuery('');
     setSelectedCategory(null);
     setSelectedBrand('');
     setSelectedBrandSlug(null);
@@ -258,6 +262,22 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
     setStep('protocol');
   };
 
+  /** Select a model from cross-brand search — pre-fills brand from the loaded brands list. */
+  const handleSearchModelSelect = (model: CatalogModel) => {
+    const brand = brands?.find(b => b.slug === model.brand_id);
+    setSelectedBrand(brand?.name ?? model.brand_id);
+    setSelectedBrandSlug(model.brand_id);
+    setSelectedModel(model.model_number);
+    setSelectedModelId(model.id);
+    if (model.protocols?.length) {
+      setSelectedProtocol(model.protocols[0] as ConnectionProtocol);
+    }
+    if (model.category) {
+      setSelectedCategory(model.category as DeviceCategory);
+    }
+    setStep('protocol');
+  };
+
   // ── IR Setup logic ────────────────────────────────────────────────────────
 
   const startIRSetup = async () => {
@@ -333,7 +353,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
     const result: AddDeviceResult = {
       brand: selectedBrand,
       model: selectedModel,
-      category: selectedCategory ?? 'tv',
+      category: selectedCategory ?? undefined,
       protocol: 'ir',
       modelId: selectedModelId ?? undefined,
       brandSlug: selectedBrandSlug ?? undefined,
@@ -378,7 +398,6 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
       setStep('ble_scan');
       startBleScan();
     } else {
-      setSearchQuery('');
       setStep('address');
     }
   };
@@ -468,8 +487,8 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
   }) ?? [];
 
   const filteredModels = models?.filter(m => {
-    if (!searchQuery && step === 'models') return true;
-    const q = searchQuery.toLowerCase();
+    if (!modelSearchQuery) return true;
+    const q = modelSearchQuery.toLowerCase();
     return m.model_number.toLowerCase().includes(q) || (m.model_name?.toLowerCase().includes(q) ?? false);
   }) ?? [];
 
@@ -537,54 +556,95 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
                   returnKeyType="search"
                   autoCorrect={false}
                 />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={18} color="#4A5568" />
+                  </TouchableOpacity>
+                )}
               </View>
 
-              {!searchQuery && (
+              {!isSearching ? (
+                /* ── Popular brands (no query) ── */
                 <>
-                  <Text style={styles.sectionTitle}>BROWSE BY CATEGORY</Text>
-                  <View style={styles.categoryGrid}>
-                    {CATEGORIES.map(cat => (
+                  <Text style={styles.sectionTitle}>POPULAR BRANDS</Text>
+                  {brandsLoading ? (
+                    <ActivityIndicator color="#6C63FF" style={{ marginTop: 20 }} />
+                  ) : (
+                    filteredBrands.slice(0, 15).map(brand => (
                       <TouchableOpacity
-                        key={cat.id}
-                        style={[styles.categoryTile, selectedCategory === cat.id && styles.categoryTileActive]}
-                        onPress={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)}
+                        key={brand.id}
+                        style={styles.brandRow}
+                        onPress={() => handleBrandSelect(brand.name, brand.slug)}
                         activeOpacity={0.7}
                       >
-                        <Ionicons name={cat.icon} size={22} color={selectedCategory === cat.id ? '#4FC3F7' : '#8892A4'} />
-                        <Text style={[styles.categoryLabel, selectedCategory === cat.id && styles.categoryLabelActive]}>
-                          {cat.label}
-                        </Text>
+                        <View style={styles.brandAvatar}>
+                          <Text style={styles.brandAvatarText}>{brand.name.charAt(0)}</Text>
+                        </View>
+                        <Text style={styles.brandName}>{brand.name}</Text>
+                        <Ionicons name="chevron-forward" size={16} color="#3A4257" />
                       </TouchableOpacity>
-                    ))}
-                  </View>
-                  <Text style={styles.sectionDivider}>OR</Text>
+                    ))
+                  )}
                 </>
-              )}
-
-              <Text style={styles.sectionTitle}>
-                {searchQuery ? 'SEARCH RESULTS' : 'POPULAR BRANDS'}
-              </Text>
-
-              {brandsLoading ? (
-                <ActivityIndicator color="#6C63FF" style={{ marginTop: 20 }} />
               ) : (
-                filteredBrands.slice(0, 15).map(brand => (
-                  <TouchableOpacity
-                    key={brand.id}
-                    style={styles.brandRow}
-                    onPress={() => handleBrandSelect(brand.name, brand.slug)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.brandAvatar}>
-                      <Text style={styles.brandAvatarText}>{brand.name.charAt(0)}</Text>
-                    </View>
-                    <Text style={styles.brandName}>{brand.name}</Text>
-                    <Ionicons name="chevron-forward" size={16} color="#3A4257" />
-                  </TouchableOpacity>
-                ))
-              )}
-              {!brandsLoading && filteredBrands.length === 0 && (
-                <Text style={styles.emptyText}>No brands found for "{searchQuery}"</Text>
+                /* ── Unified search results (brands + models) ── */
+                <>
+                  {/* Brand matches */}
+                  {filteredBrands.length > 0 && (
+                    <>
+                      <Text style={styles.sectionTitle}>BRANDS</Text>
+                      {filteredBrands.slice(0, 5).map(brand => (
+                        <TouchableOpacity
+                          key={brand.id}
+                          style={styles.brandRow}
+                          onPress={() => handleBrandSelect(brand.name, brand.slug)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.brandAvatar}>
+                            <Text style={styles.brandAvatarText}>{brand.name.charAt(0)}</Text>
+                          </View>
+                          <Text style={styles.brandName}>{brand.name}</Text>
+                          <Ionicons name="chevron-forward" size={16} color="#3A4257" />
+                        </TouchableOpacity>
+                      ))}
+                    </>
+                  )}
+
+                  {/* Model matches */}
+                  <Text style={[styles.sectionTitle, { marginTop: filteredBrands.length > 0 ? 16 : 0 }]}>MODELS</Text>
+                  {searchModelsLoading ? (
+                    <ActivityIndicator color="#6C63FF" style={{ marginTop: 12 }} />
+                  ) : searchedModels && searchedModels.length > 0 ? (
+                    searchedModels.map(model => {
+                      const brandName = brands?.find(b => b.slug === model.brand_id)?.name ?? model.brand_id;
+                      return (
+                        <TouchableOpacity
+                          key={model.id}
+                          style={styles.modelRow}
+                          onPress={() => handleSearchModelSelect(model)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.brandAvatar}>
+                            <Text style={styles.brandAvatarText}>{brandName.charAt(0)}</Text>
+                          </View>
+                          <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Text style={styles.modelNumber}>{model.model_number}</Text>
+                            <Text style={styles.modelName}>
+                              {brandName}{model.model_name ? ` · ${model.model_name}` : ''}{model.category ? ` · ${model.category.toUpperCase()}` : ''}
+                            </Text>
+                          </View>
+                          <Ionicons name="chevron-forward" size={16} color="#3A4257" />
+                        </TouchableOpacity>
+                      );
+                    })
+                  ) : (
+                    <Text style={styles.emptyText}>No models found for "{searchQuery}"</Text>
+                  )}
+
+                  {!brandsLoading && !searchModelsLoading && filteredBrands.length === 0 && (!searchedModels || searchedModels.length === 0) && (
+                    <Text style={styles.emptyText}>No results for "{searchQuery}"</Text>
+                  )}
+                </>
               )}
               <View style={{ height: 40 }} />
             </ScrollView>
@@ -603,8 +663,8 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
                   style={styles.searchInput}
                   placeholder="Search model..."
                   placeholderTextColor="#4A5568"
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
+                  value={modelSearchQuery}
+                  onChangeText={setModelSearchQuery}
                   returnKeyType="search"
                   autoCorrect={false}
                 />

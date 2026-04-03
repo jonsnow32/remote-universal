@@ -87,3 +87,25 @@ export async function fetchModelsByBrand(
     protocols: Array.isArray(row.protocols) ? (row.protocols as string[]) : [],
   }));
 }
+
+/**
+ * Full-text search across all device models (model_number + model_name).
+ * Returns up to 25 results ordered by model_number.
+ */
+export async function searchModels(query: string): Promise<CatalogModel[]> {
+  const { data, error } = await getCatalogClient()
+    .from('device_models')
+    .select('id, brand_id, model_number, model_name, protocols, category')
+    .or(`model_number.ilike.%${query}%,model_name.ilike.%${query}%`)
+    .limit(25)
+    .order('model_number');
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row: any) => ({
+    id: row.id as string,
+    brand_id: row.brand_id as string,
+    model_number: row.model_number as string,
+    model_name: (row.model_name ?? null) as string | null,
+    category: (row.category ?? null) as string | null,
+    protocols: Array.isArray(row.protocols) ? (row.protocols as string[]) : [],
+  }));
+}

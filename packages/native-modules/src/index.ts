@@ -11,6 +11,8 @@ export {
   androidTvConnectRemote,
   androidTvDisconnectRemote,
   androidTvSendKey,
+  androidTvSendText,
+  androidTvSubmitText,
   androidTvUnpair,
 } from './AndroidTVModule';
 export { samsungTizenPairWithTV } from './SamsungTizenPairingModule';

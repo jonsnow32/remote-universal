@@ -27,6 +27,20 @@ export const SAMSUNG_KEY_MAP: Record<string, string> = {
   SOURCE:        'KEY_SOURCE',
   NETFLIX:       'KEY_NETFLIX',
   YOUTUBE:       'KEY_APP_YOUTUBE',
+  // Digits
+  DIGIT_0:       'KEY_0',
+  DIGIT_1:       'KEY_1',
+  DIGIT_2:       'KEY_2',
+  DIGIT_3:       'KEY_3',
+  DIGIT_4:       'KEY_4',
+  DIGIT_5:       'KEY_5',
+  DIGIT_6:       'KEY_6',
+  DIGIT_7:       'KEY_7',
+  DIGIT_8:       'KEY_8',
+  DIGIT_9:       'KEY_9',
+  // Editing
+  DEL:           'KEY_DEL',
+  ENTER:         'KEY_ENTER',
 };
 
 // Storage key prefixes
@@ -430,6 +444,8 @@ export class SamsungTizen {
     // Wait for the TV's search UI to animate in and gain focus.
     await new Promise<void>(r => setTimeout(r, 800));
 
+
+
     const ws = SamsungTizen.sessions.get(ip);
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
@@ -449,6 +465,34 @@ export class SamsungTizen {
     // Brief pause then submit.
     await new Promise<void>(r => setTimeout(r, 300));
     await SamsungTizen.sendKey(ip, 'KEY_ENTER');
+  }
+
+  /**
+   * Replace the content of an already-focused input field on the TV.
+   *
+   * Unlike {@link sendText}, this does NOT open the search overlay first —
+   * it assumes the TV keyboard / input field is already visible and focused.
+   * Use this for real-time keyboard mirroring where the user types on their
+   * phone and each keypress is reflected on the TV immediately.
+   *
+   * Samsung's `SendInputString` replaces the entire field value in one shot,
+   * which avoids the per-character latency of sending individual key codes.
+   */
+  static async replaceInputText(ip: string, text: string): Promise<void> {
+    if (!SamsungTizen.readySessions.has(ip)) await SamsungTizen.connect(ip);
+
+    const ws = SamsungTizen.sessions.get(ip);
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    ws.send(JSON.stringify({
+      method: 'ms.remote.control',
+      params: {
+        Cmd: 'ClickViewOn',
+        DataOfCmd: text,
+        Option: 'false',
+        TypeOfRemote: 'SendInputString',
+      },
+    }));
   }
 
   // ── Raw audio voice streaming (ms.remote.voice protocol) ─────────────────

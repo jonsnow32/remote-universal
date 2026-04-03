@@ -15,6 +15,9 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 import javax.net.ssl.*
 
 /**
@@ -37,6 +40,16 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
     override fun getName(): String = "AndroidTV"
 
     private val executor = Executors.newCachedThreadPool()
+
+    // ── IME text debounce ───────────────────────────────────────────────────
+    // sendText calls are debounced so rapid keystrokes only trigger one ATVRS
+    // RemoteImeKeyInject — avoids flooding the TV with partial updates.
+    private val TEXT_DEBOUNCE_MS = 300L
+    private val textDebounceScheduler: ScheduledExecutorService =
+        Executors.newSingleThreadScheduledExecutor()
+    @Volatile private var textDebounceJob: ScheduledFuture<*>? = null
+    @Volatile private var textDebounceIp   = ""
+    @Volatile private var textDebounceText = ""
 
     // ── Shared prefs keys ───────────────────────────────────────────────────
     private val PREFS = "androidtv_remote"
@@ -159,6 +172,27 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
                         varintField(2, DIR_SHORT)
                     ),
                 )))
+                out.flush()
+            }
+        }
+
+        /**
+         * Replace the content of the currently focused IME input field on the TV.
+         *
+         * Uses ATVRS RemoteImeKeyInject (RemoteMessage field 12) which replaces
+         * the entire field value in one round-trip — far more efficient than
+         * sending individual keycodes.  The TV's IME must already be focused
+         * (i.e. the user has tapped a search / text field on-screen).
+         *
+         * RemoteImeKeyInject layout:
+         *   field 1 (string): text_field   — the full replacement text
+         *   field 3 (varint): text_field_status — 4 = HAS_TEXT / in-progress
+         */
+        fun sendImeBatchEdit(text: String) {
+            val out = output ?: throw IOException("Not connected")
+            synchronized(writeLock) {
+                val imeFields = stringField(1, text) + varintField(3, 4)
+                out.write(buildRemoteMessage(mapOf(RMF_IME to V_MSG(imeFields))))
                 out.flush()
             }
         }
@@ -380,6 +414,88 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
                 promise.resolve(null)
             } catch (e: Exception) {
                 // On failure, tear down the session so next call retries.
+                remoteSessions.remove(ip)?.close()
+                val msg = e.message ?: "Unknown error"
+                if (msg.contains("ECONNRESET") || msg.contains("reset")) {
+                    removePairedIp(ip)
+                    promise.reject("NOT_PAIRED", "TV rejected connection — please re-pair")
+                } else {
+                    promise.reject("SEND_ERROR", msg, e)
+                }
+            }
+        }
+    }
+
+    /**
+     * Stream a text value to the focused IME field on a paired Android TV,
+     * debounced 300 ms so rapid keystrokes collapse into a single ATVRS message.
+     *
+     * Resolves immediately (before the debounce fires) so the JS bridge is never
+     * blocked.  Use this for real-time keyboard mirroring.
+     */
+    @ReactMethod
+    fun sendText(ip: String, text: String, promise: Promise) {
+        if (!loadPairedIps().contains(ip)) {
+            promise.reject("NOT_PAIRED", "Device $ip is not paired")
+            return
+        }
+        // Resolve immediately — JS doesn't need to wait for the debounce.
+        promise.resolve(null)
+        // Cancel previous scheduled send; schedule a fresh one.
+        textDebounceJob?.cancel(false)
+        textDebounceIp   = ip
+        textDebounceText = text
+        textDebounceJob  = textDebounceScheduler.schedule({
+            val t = textDebounceText
+            val i = textDebounceIp
+            executor.execute {
+                try {
+                    var session = remoteSessions[i]
+                    if (session == null || !session.alive) {
+                        session?.close()
+                        val s = RemoteSession(i)
+                        s.connect()
+                        remoteSessions[i] = s
+                        session = s
+                    }
+                    session.sendImeBatchEdit(t)
+                } catch (e: Exception) {
+                    android.util.Log.e("AndroidTV", "debounced sendText error: ${e.message}")
+                }
+            }
+        }, TEXT_DEBOUNCE_MS, TimeUnit.MILLISECONDS)
+    }
+
+    /**
+     * Immediately send text to the focused IME field then press ENTER.
+     * Cancels any pending debounced [sendText] call first.
+     * Use this for the final submit action.
+     */
+    @ReactMethod
+    fun submitText(ip: String, text: String, promise: Promise) {
+        if (!loadPairedIps().contains(ip)) {
+            promise.reject("NOT_PAIRED", "Device $ip is not paired")
+            return
+        }
+        // Cancel any in-flight debounce — we're about to send the final value.
+        textDebounceJob?.cancel(false)
+        textDebounceJob = null
+        executor.execute {
+            try {
+                var session = remoteSessions[ip]
+                if (session == null || !session.alive) {
+                    session?.close()
+                    val s = RemoteSession(ip)
+                    s.connect()
+                    remoteSessions[ip] = s
+                    session = s
+                }
+                session.sendImeBatchEdit(text)
+                // Small gap so the TV's IME commits the text before ENTER arrives.
+                Thread.sleep(80)
+                session.sendKeyImmediate(KEYCODE_ENTER)
+                promise.resolve(null)
+            } catch (e: Exception) {
                 remoteSessions.remove(ip)?.close()
                 val msg = e.message ?: "Unknown error"
                 if (msg.contains("ECONNRESET") || msg.contains("reset")) {
@@ -648,7 +764,9 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
     private val RMF_PING       = 8
     private val RMF_PONG       = 9
     private val RMF_KEY        = 10
+    private val RMF_IME        = 12  // RemoteImeKeyInject
     private val DIR_SHORT      = 3   // RemoteDirection.SHORT
+    private val KEYCODE_ENTER  = 66  // KEYCODE_ENTER
 
     private fun buildRemoteMessage(fields: Map<Int, Val>) = delimited(buildMessage(fields))
 

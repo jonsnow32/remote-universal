@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import type { LayoutSection } from '@remote/core';
 import { SectionGrid } from './SectionGrid';
+import type { TextInputWHandle } from './widgets/TextInputW';
 
 // ─── Deprecated aliases kept for backward compatibility ───────────────────────
 /** @deprecated Use ButtonWidget from @remote/core */
@@ -24,9 +25,11 @@ export interface RemoteLayoutSection {
 export interface RemoteLayoutProps {
   sections: LayoutSection[];
   onButtonPress: (action: string) => void;
+  /** Called with the first text-input widget's handle so the host can programmatically open it. */
+  onRegisterTextInput?: (handle: TextInputWHandle) => void;
 }
 
-export function RemoteLayout({ sections, onButtonPress }: RemoteLayoutProps): React.ReactElement {
+export function RemoteLayout({ sections, onButtonPress, onRegisterTextInput }: RemoteLayoutProps): React.ReactElement {
   return (
     <ScrollView
       contentContainerStyle={{ paddingVertical: 12, paddingHorizontal: 0 }}
@@ -48,7 +51,7 @@ export function RemoteLayout({ sections, onButtonPress }: RemoteLayoutProps): Re
               {section.title.toUpperCase()}
             </Text>
           )}
-          <SectionGrid section={section} onAction={onButtonPress} />
+          <SectionGrid section={section} onAction={onButtonPress} onRegisterTextInput={onRegisterTextInput} />
         </View>
       ))}
     </ScrollView>

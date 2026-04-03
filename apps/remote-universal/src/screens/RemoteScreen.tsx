@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, View, Text, TouchableOpacity, StyleSheet, StatusBar, Modal, ActivityIndicator, PermissionsAndroid, Platform, Linking } from 'react-native';
+import { Animated, View, Text, TouchableOpacity, StyleSheet, StatusBar, Modal, ActivityIndicator, PermissionsAndroid, Platform, Linking, NativeEventEmitter, NativeModules } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RemoteLayout } from '@remote/ui-kit';
+import type { TextInputWHandle } from '@remote/ui-kit';
 import { findLayout, SamsungTizen, AndroidTV, ANDROID_TV_NOT_PAIRED } from '@remote/device-sdk';
 import { IRModule, BLEModule, HomeKitModule, MatterModule, MicStreamModule } from '@remote/native-modules';
 import type { DeviceType, LayoutSection } from '@remote/core';
@@ -106,6 +107,14 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
   // Connection error modal
   const [showConnErrorModal, setShowConnErrorModal] = useState(false);
 
+  // Keyboard mirroring — tracks the last text value sent to the TV so we can
+  // diff each KEYBOARD_INPUT event and only send the delta (Android TV) or
+  // replace the whole field (Samsung).
+  const lastMirroredTextRef = useRef<string>('');
+  // Handle to the TextInputW widget — used to programmatically open it when
+  // the TV opens a text field (AndroidTVIme event).
+  const textInputHandleRef = useRef<TextInputWHandle | null>(null);
+
   useEffect(() => {
     void getApiBaseUrl().then(url => setApiBaseUrlState(url));
   }, []);
@@ -140,17 +149,44 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
   }, []);
 
   // ─── Post-connect TV setup (WebSocket / pairing check) ───────────────────
-
+  // Pre-connect as soon as we are connected and paired so the first button
+  // press is instant.  We intentionally do NOT disconnect in this cleanup —
+  // a connStatus flicker would otherwise tear down and immediately recreate
+  // the session, causing the double-connect race.
   useEffect(() => {
-    if (connStatus !== 'connected') return;
-    if (isAndroidTV) {
-      void AndroidTV.isPaired(address).then(paired => {
-        if (!paired) setShowPairingModal(true);
-        else void AndroidTV.connectRemote(address).catch(() => {});
-      });
-      return () => { void AndroidTV.disconnectRemote(address).catch(() => {}); };
-    }
+    if (connStatus !== 'connected' || !isAndroidTV) return;
+    void AndroidTV.isPaired(address).then(paired => {
+      if (!paired) setShowPairingModal(true);
+      else void AndroidTV.connectRemote(address).catch(() => {});
+    });
   }, [connStatus, isAndroidTV, address]);
+
+  // Disconnect only when the target device changes or the screen unmounts.
+  useEffect(() => {
+    if (!isAndroidTV) return;
+    return () => { void AndroidTV.disconnectRemote(address).catch(() => {}); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAndroidTV, address]);
+
+  // ─── TV-driven keyboard sync ──────────────────────────────────────────────
+  // When the TV opens a text field it sends RMF_IME, which the native module
+  // re-emits as "AndroidTVIme".  We open the phone keyboard pre-filled with
+  // the TV's current text so the user can edit it directly.
+  useEffect(() => {
+    if (!isAndroidTV) return;
+    const emitter = new NativeEventEmitter(NativeModules.AndroidTV);
+    const sub = emitter.addListener(
+      'AndroidTVIme',
+      (event: { ip: string; text: string; hint: string; active: boolean }) => {
+        if (event.ip !== address) return;
+        if (event.active) {
+          lastMirroredTextRef.current = event.text;
+          textInputHandleRef.current?.openWithText(event.text, event.hint);
+        }
+      },
+    );
+    return () => sub.remove();
+  }, [isAndroidTV, address]);
 
   // ─── Layout sections ──────────────────────────────────────────────────────
 
@@ -171,6 +207,76 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
   // ─── Button handler ───────────────────────────────────────────────────────
 
   const handleButtonPress = useCallback(async (action: string) => {
+    // ── Keyboard mirroring intercept ─────────────────────────────────────────
+    // TextInputW fires KEYBOARD_INPUT:<text> on every keystroke.
+    // Reset mirroring state when the keyboard modal opens.
+    if (action === 'KEYBOARD_OPEN') {
+      lastMirroredTextRef.current = '';
+      return;
+    }
+
+    if (action.startsWith('KEYBOARD_INPUT:')) {
+      const newText = action.slice('KEYBOARD_INPUT:'.length);
+      lastMirroredTextRef.current = newText;
+
+      try {
+        if (isSamsungTV) {
+          // Samsung: replace the entire field value in one shot.
+          await SamsungTizen.replaceInputText(address, newText);
+        } else if (isAndroidTV) {
+          // Android TV: use native IME batch-edit (debounced 300 ms in native).
+          // The native sendText calls RemoteImeKeyInject which replaces the full
+          // field value — no per-character diffing needed.
+          await AndroidTV.sendText(address, newText);
+        }
+        // IR / BLE / WiFi: mirroring not supported.
+      } catch (err) {
+        const code = (err as Error & { code?: string }).code;
+        if (code === ANDROID_TV_NOT_PAIRED) {
+          setShowPairingModal(true);
+        } else {
+          showToast(err instanceof Error ? err.message : 'Keyboard sync failed', false);
+        }
+      }
+      return;
+    }
+
+    // ── Text-input submit intercept ──────────────────────────────────────────
+    // TextInputW fires `${widget.action}:${text}` on submit (e.g. "SEARCH:hello").
+    const colonIdx = action.indexOf(':');
+    if (colonIdx !== -1 && !action.startsWith('KEYBOARD_INPUT:')) {
+      const baseAction = action.slice(0, colonIdx);
+      const inputText  = action.slice(colonIdx + 1);
+      try {
+        if (isSamsungTV) {
+          // If text was already mirrored just press ENTER; otherwise open search + type.
+          if (lastMirroredTextRef.current !== '') {
+            await SamsungTizen.sendKey(address, 'KEY_ENTER');
+          } else {
+            await SamsungTizen.sendText(address, inputText);
+          }
+        } else if (isAndroidTV) {
+          // submitText cancels the pending debounce, immediately sends the text
+          // via RemoteImeKeyInject, then presses ENTER — all in one native call.
+          await AndroidTV.submitText(address, inputText);
+        } else {
+          // IR / BLE / WiFi: forward the base action so backend can handle it.
+          await handleButtonPress(baseAction);
+        }
+        lastMirroredTextRef.current = '';
+        showToast(`✓ ${baseAction}: ${inputText}`, true);
+      } catch (err) {
+        const code = (err as Error & { code?: string }).code;
+        if (isAndroidTV && code === ANDROID_TV_NOT_PAIRED) {
+          pendingActionRef.current = action;
+          setShowPairingModal(true);
+        } else {
+          showToast(err instanceof Error ? err.message : String(err), false);
+        }
+      }
+      return;
+    }
+
     // Voice widget intercept
     if (action === 'VOICE_COMMAND') {
       if (isAndroidTV) {
@@ -377,7 +483,11 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
       </View>
 
       {/* Remote control */}
-      <RemoteLayout sections={sections} onButtonPress={handleButtonPress} />
+      <RemoteLayout
+        sections={sections}
+        onButtonPress={handleButtonPress}
+        onRegisterTextInput={h => { textInputHandleRef.current = h; }}
+      />
 
       {/* Toast */}
       {toast && (

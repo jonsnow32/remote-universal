@@ -6,11 +6,14 @@ import { DPadW }     from './widgets/DPadW';
 import { RockerW }   from './widgets/RockerW';
 import { TouchpadW } from './widgets/TouchpadW';
 import { TextInputW } from './widgets/TextInputW';
+import type { TextInputWHandle } from './widgets/TextInputW';
 import { VoiceW }    from './widgets/VoiceW';
 
 interface Props {
   section: LayoutSection;
   onAction: (action: string) => void;
+  /** Called with the text-input widget's imperative handle when it mounts. */
+  onRegisterTextInput?: (handle: TextInputWHandle) => void;
 }
 
 interface CellLayout {
@@ -47,7 +50,11 @@ function containerHeight(section: LayoutSection, rowHeight: number, gap: number)
   return maxRow * rowHeight + (maxRow + 1) * gap;
 }
 
-function renderWidget(widget: RemoteWidget, onAction: (a: string) => void): React.ReactNode {
+function renderWidget(
+  widget: RemoteWidget,
+  onAction: (a: string) => void,
+  onRegisterTextInput?: (h: TextInputWHandle) => void,
+): React.ReactNode {
   switch (widget.type) {
     case 'button':
       return <ButtonW    key={widget.id} widget={widget} onAction={onAction} />;
@@ -58,7 +65,14 @@ function renderWidget(widget: RemoteWidget, onAction: (a: string) => void): Reac
     case 'touchpad':
       return <TouchpadW key={widget.id} widget={widget} onAction={onAction} />;
     case 'text-input':
-      return <TextInputW key={widget.id} widget={widget} onAction={onAction} />;
+      return (
+        <TextInputW
+          key={widget.id}
+          widget={widget}
+          onAction={onAction}
+          ref={onRegisterTextInput ? (h: TextInputWHandle | null) => { if (h) onRegisterTextInput(h); } : null}
+        />
+      );
     case 'voice':
       return <VoiceW     key={widget.id} widget={widget} onAction={onAction} />;
     default:
@@ -66,7 +80,7 @@ function renderWidget(widget: RemoteWidget, onAction: (a: string) => void): Reac
   }
 }
 
-export function SectionGrid({ section, onAction }: Props) {
+export function SectionGrid({ section, onAction, onRegisterTextInput }: Props) {
   const [containerWidth, setContainerWidth] = useState(0);
 
   const gap       = section.gap       ?? 8;
@@ -95,7 +109,7 @@ export function SectionGrid({ section, onAction }: Props) {
               height: cell.height,
             }}
           >
-            {renderWidget(widget, onAction)}
+            {renderWidget(widget, onAction, onRegisterTextInput)}
           </View>
         );
       })}

@@ -7,6 +7,8 @@ interface AndroidTVNative {
   connectRemote(ip: string): Promise<void>;
   disconnectRemote(ip: string): Promise<void>;
   sendKey(ip: string, keyCode: number): Promise<void>;
+  sendText(ip: string, text: string): Promise<void>;
+  submitText(ip: string, text: string): Promise<void>;
   unpair(ip: string): Promise<void>;
 }
 
@@ -67,6 +69,25 @@ export function androidTvDisconnectRemote(ip: string): Promise<void> {
  */
 export function androidTvSendKey(ip: string, keyCode: number): Promise<void> {
   return getNative()?.sendKey(ip, keyCode) ?? stub();
+}
+
+/**
+ * Stream the current text value to the focused IME field on the TV.
+ * The native layer debounces calls by 300 ms so rapid keystrokes collapse
+ * into a single ATVRS RemoteImeKeyInject message.
+ * Resolves immediately (the debounce fires in the background).
+ */
+export function androidTvSendText(ip: string, text: string): Promise<void> {
+  return getNative()?.sendText(ip, text) ?? stub();
+}
+
+/**
+ * Immediately inject text into the focused IME field and press ENTER.
+ * Cancels any pending debounced sendText call first.
+ * Use this for the final search / submit action.
+ */
+export function androidTvSubmitText(ip: string, text: string): Promise<void> {
+  return getNative()?.submitText(ip, text) ?? stub();
 }
 
 /**

@@ -18,3 +18,4 @@ export type { DeviceCardProps } from './components/DeviceCard';
 
 export { RemoteLayout } from './components/RemoteLayout';
 export type { RemoteLayoutProps, RemoteLayoutSection, RemoteLayoutButton } from './components/RemoteLayout';
+export type { TextInputWHandle } from './components/RemoteLayout/widgets/TextInputW';

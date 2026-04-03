@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useImperativeHandle, forwardRef } from 'react';
 import {
   View,
   Text,
@@ -7,29 +7,51 @@ import {
   Pressable,
   KeyboardAvoidingView,
   Platform,
+  StyleSheet,
 } from 'react-native';
 import type { TextInputWidget } from '@remote/core';
 import { Ionicons } from '@react-native-vector-icons/ionicons';
+
+export interface TextInputWHandle {
+  /** Open the modal pre-filled with [initialText] and optional [hint] (TV-driven open). */
+  openWithText: (initialText: string, hint?: string) => void;
+}
 
 interface Props {
   widget: TextInputWidget;
   onAction: (action: string) => void;
 }
 
-export function TextInputW({ widget, onAction }: Props) {
+export const TextInputW = forwardRef<TextInputWHandle, Props>(function TextInputW(
+  { widget, onAction }: Props,
+  ref,
+) {
   const [visible, setVisible] = useState(false);
   const [text, setText] = useState('');
+  const [tvHint, setTvHint] = useState('');
   const inputRef = useRef<TextInput>(null);
 
-  const open = () => {
-    setText('');
+  const openModal = (initialText: string, hint?: string) => {
+    setText(initialText);
+    if (hint !== undefined) setTvHint(hint);
     setVisible(true);
-    // focus after modal fully opens
+    onAction('KEYBOARD_OPEN');
     setTimeout(() => inputRef.current?.focus(), 100);
   };
 
+  const open = () => openModal('');
+
+  // Expose openWithText so RemoteScreen can drive keyboard open from TV event.
+  useImperativeHandle(ref, () => ({
+    openWithText: (initialText: string, hint?: string) => openModal(initialText, hint),
+  }));
+
+  const handleChangeText = (newText: string) => {
+    setText(newText);
+    onAction(`KEYBOARD_INPUT:${newText}`);
+  };
+
   const submit = () => {
-    if (!text.trim()) return;
     onAction(`${widget.action}:${text.trim()}`);
     setVisible(false);
   };
@@ -69,26 +91,34 @@ export function TextInputW({ widget, onAction }: Props) {
         animationType="fade"
         onRequestClose={() => setVisible(false)}
       >
-        <Pressable
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}
-          onPress={() => setVisible(false)}
+        <KeyboardAvoidingView
+          style={{ flex: 1, justifyContent: 'flex-end' }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          {/* Backdrop — tap to dismiss */}
+          <Pressable
+            style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.65)' }}
+            onPress={() => setVisible(false)}
+          />
+
+          {/* Sheet content — stops backdrop press from propagating */}
+          <Pressable
+            onPress={() => {/* stop propagation */}}
+            style={{
+              backgroundColor: '#131929',
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              padding: 20,
+              paddingBottom: Platform.OS === 'ios' ? 36 : 20,
+            }}
           >
-            <Pressable
-              onPress={() => {/* stop propagation */}}
-              style={{
-                backgroundColor: '#131929',
-                borderTopLeftRadius: 20,
-                borderTopRightRadius: 20,
-                padding: 20,
-                paddingBottom: Platform.OS === 'ios' ? 36 : 20,
-              }}
-            >
-              <Text style={{ color: '#8892A4', fontSize: 13, marginBottom: 12 }}>
-                {widget.placeholder ?? 'Search'}
-              </Text>
+              {/* ── Mirror hint ── */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#00C9A7' }} />
+                <Text style={{ color: '#00C9A7', fontSize: 12, fontWeight: '600' }}>
+                  Mirroring to TV keyboard
+                </Text>
+              </View>
 
               <View
                 style={{
@@ -110,16 +140,17 @@ export function TextInputW({ widget, onAction }: Props) {
                 <TextInput
                   ref={inputRef}
                   value={text}
-                  onChangeText={setText}
+                  onChangeText={handleChangeText}
                   onSubmitEditing={submit}
                   returnKeyType="search"
-                  placeholder={widget.placeholder ?? 'Type to search…'}
+                  placeholder={tvHint || widget.placeholder || 'Type to search…'}
                   placeholderTextColor="#3C4560"
                   style={{ flex: 1, color: '#E2E8F7', fontSize: 15, paddingVertical: 12 }}
                   autoCorrect={false}
+                  autoCapitalize="none"
                 />
                 {text.length > 0 && (
-                  <Pressable onPress={() => setText('')}>
+                  <Pressable onPress={() => handleChangeText('')}>
                     <Ionicons name="close-circle" size={18} color="#555E74" />
                   </Pressable>
                 )}
@@ -136,12 +167,11 @@ export function TextInputW({ widget, onAction }: Props) {
                   opacity: pressed ? 0.75 : 1,
                 })}
               >
-                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Search</Text>
+                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Search on TV</Text>
               </Pressable>
-            </Pressable>
-          </KeyboardAvoidingView>
-        </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );
-}
+});

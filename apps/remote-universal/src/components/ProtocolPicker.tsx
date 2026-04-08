@@ -25,38 +25,56 @@ interface Props {
   selected: ConnectionProtocol;
   recommended?: ConnectionProtocol;
   onSelect: (protocol: ConnectionProtocol) => void;
+  /** Protocols reported by the device's catalog entry. When provided, each
+   * option shows whether it is supported by the specific model. */
+  deviceProtocols?: ConnectionProtocol[];
 }
 
-export function ProtocolPicker({ selected, recommended = 'wifi', onSelect }: Props): React.ReactElement {
+function resolveDescription(proto: ProtocolOption, deviceProtocols?: ConnectionProtocol[]): { text: string; supported: boolean | null } {
+  if (!deviceProtocols || deviceProtocols.length === 0) {
+    return { text: proto.description, supported: null };
+  }
+  if (deviceProtocols.includes(proto.id)) {
+    return { text: 'Supported by this model ✓', supported: true };
+  }
+  return { text: 'Not listed for this model', supported: false };
+}
+
+export function ProtocolPicker({ selected, recommended = 'wifi', onSelect, deviceProtocols }: Props): React.ReactElement {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Choose connection method</Text>
       {ALL_PROTOCOLS.map((proto) => {
         const isSelected = selected === proto.id;
         const isRecommended = proto.id === recommended;
+        const { text: descText, supported } = resolveDescription(proto, deviceProtocols);
+        const dimmed = supported === false;
         return (
           <TouchableOpacity
             key={proto.id}
             style={[
               styles.option,
               isSelected && { borderColor: proto.color },
+              dimmed && styles.optionDimmed,
             ]}
             onPress={() => onSelect(proto.id)}
             activeOpacity={0.7}
           >
-            <View style={[styles.iconWrap, { backgroundColor: proto.color + '22' }]}>
-              <Ionicons name={proto.icon} size={20} color={proto.color} />
+            <View style={[styles.iconWrap, { backgroundColor: proto.color + (dimmed ? '11' : '22') }]}>
+              <Ionicons name={proto.icon} size={20} color={dimmed ? '#3A4257' : proto.color} />
             </View>
             <View style={styles.content}>
               <View style={styles.titleRow}>
-                <Text style={styles.optionLabel}>{proto.label}</Text>
+                <Text style={[styles.optionLabel, dimmed && styles.optionLabelDimmed]}>{proto.label}</Text>
                 {isRecommended && (
                   <View style={styles.recommendBadge}>
                     <Text style={styles.recommendText}>Recommended</Text>
                   </View>
                 )}
               </View>
-              <Text style={styles.description}>{proto.description}</Text>
+              <Text style={[styles.description, supported === true && styles.descriptionSupported]}>
+                {descText}
+              </Text>
             </View>
           </TouchableOpacity>
         );
@@ -107,6 +125,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
+  optionLabelDimmed: {
+    color: '#3A4257',
+  },
+  optionDimmed: {
+    opacity: 0.55,
+  },
   recommendBadge: {
     backgroundColor: '#00C9A722',
     paddingHorizontal: 8,
@@ -123,5 +147,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#8892A4',
     marginTop: 2,
+  },
+  descriptionSupported: {
+    color: '#00C9A7',
   },
 });

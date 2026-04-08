@@ -111,6 +111,12 @@ function getUSBNative(): USBIRBlasterNative | null {
  * **To generate IR codes:** use the [IRDB](https://github.com/probonopd/irdb) database
  * (Pronto Hex) or record codes from an existing remote with a BlasterMate dongle.
  */
+// Module-level transmit lock. Prevents concurrent calls from reaching the native
+// layer simultaneously (e.g. React StrictMode double-invoke in dev builds creates
+// two separate component instances each with their own ref, so component-level
+// guards do not work — this module is a singleton so this guard is reliable).
+let _transmitting = false;
+
 export const IRModule = {
   /**
    * Returns true when an IR transmitter is available — either the device's
@@ -143,45 +149,57 @@ export const IRModule = {
       throw new Error('[IRModule] IR blasting is only supported on Android devices.');
     }
 
-    let frequencyHz: number;
-    let pattern: number[];
+    // Deduplicate concurrent calls at module level (singleton guard).
+    // IRModule is a singleton — this works even when React StrictMode creates
+    // two component instances each with independent useRef state.
+    if (_transmitting) return;
+    _transmitting = true;
 
-    const trimmed = payload.trim();
+    try {
+      let frequencyHz: number;
+      let pattern: number[];
 
-    // Detect Pronto Hex: sequence of 4-digit hex words separated by spaces
-    if (/^[0-9a-fA-F]{4}(\s+[0-9a-fA-F]{4})+$/.test(trimmed)) {
-      ({ frequencyHz, pattern } = parseProntoHex(trimmed));
-    } else {
-      // Raw JSON format
-      const raw = JSON.parse(trimmed) as { frequency: number; pattern: number[] };
-      frequencyHz = raw.frequency;
-      pattern = raw.pattern;
-    }
+      const trimmed = payload.trim();
 
-    // 1. Try built-in ConsumerIrManager
-    const native = getNative();
-    if (native) {
-      const hasEmitter = await native.hasIrEmitter().catch(() => false);
-      if (hasEmitter) {
-        await native.transmit(frequencyHz, pattern);
-        return;
+      // Detect Pronto Hex: sequence of 4-digit hex words separated by spaces
+      if (/^[0-9a-fA-F]{4}(\s+[0-9a-fA-F]{4})+$/.test(trimmed)) {
+        ({ frequencyHz, pattern } = parseProntoHex(trimmed));
+      } else {
+        // Raw JSON format
+        const raw = JSON.parse(trimmed) as { frequency: number; pattern: number[] };
+        frequencyHz = raw.frequency;
+        pattern = raw.pattern;
       }
-    }
 
-    // 2. Fall back to USB IR blaster
-    const usb = getUSBNative();
-    if (usb) {
-      const usbConnected = await usb.isConnected().catch(() => false);
-      if (usbConnected) {
-        await usb.transmit(frequencyHz, pattern);
-        return;
+      // 1. Try built-in ConsumerIrManager
+      const native = getNative();
+      if (native) {
+        const hasEmitter = await native.hasIrEmitter().catch(() => false);
+        if (hasEmitter) {
+          await native.transmit(frequencyHz, pattern);
+          return;
+        }
       }
-    }
 
-    throw new Error(
-      '[IRModule] No IR transmitter available. ' +
-        'This device has no built-in IR emitter and no USB IR blaster is connected.'
-    );
+      // 2. Fall back to USB IR blaster — call transmit() directly; the native layer
+      //    will auto-reconnect if the connection dropped while the device is still present.
+      const usb = getUSBNative();
+      if (usb) {
+        const usbReachable = await usb.isConnected().catch(() => false)
+          || (await usb.getDeviceName().catch(() => null)) !== null;
+        if (usbReachable) {
+          await usb.transmit(frequencyHz, pattern);
+          return;
+        }
+      }
+
+      throw new Error(
+        '[IRModule] No IR transmitter available. ' +
+          'This device has no built-in IR emitter and no USB IR blaster is connected.'
+      );
+    } finally {
+      _transmitting = false;
+    }
   },
 
   /**

@@ -109,12 +109,15 @@ type CodeRow = {
   pronto_hex: string | null;
   raw_pattern: string | null;
   raw_frequency_hz: number | null;
+  /** Carrier frequency from the parent ir_codesets row — fallback when raw_frequency_hz is null. */
+  codeset_carrier_hz: number | null;
 };
 
 function buildPayload(row: CodeRow): IRResolveResult {
   if (row.pronto_hex) return { payload: row.pronto_hex, format: 'pronto_hex' };
   if (row.raw_pattern) {
-    const freq = row.raw_frequency_hz ?? 38000;
+    // Priority: per-code override → codeset default → industry fallback (38 kHz)
+    const freq = row.raw_frequency_hz ?? row.codeset_carrier_hz ?? 38_000;
     return {
       payload: JSON.stringify({ frequency: freq, pattern: JSON.parse(row.raw_pattern) }),
       format: 'raw_json',
@@ -146,10 +149,25 @@ export async function fetchIRCodesets(
 ): Promise<IRCodeset[]> {
   const d = requireDb();
 
-  const irBrands = d.getAllSync<{ id: string }>(
+  // 1st try: exact category match
+  let irBrands = d.getAllSync<{ id: string }>(
     'SELECT id FROM ir_brands WHERE catalog_brand_id = ? AND category = ?',
     [brand, category],
   );
+  // 2nd try: 'other' bucket (AC, speaker, light, etc. may be stored there)
+  if (irBrands.length === 0) {
+    irBrands = d.getAllSync<{ id: string }>(
+      "SELECT id FROM ir_brands WHERE catalog_brand_id = ? AND category = 'other'",
+      [brand],
+    );
+  }
+  // 3rd try: any category for this brand
+  if (irBrands.length === 0) {
+    irBrands = d.getAllSync<{ id: string }>(
+      'SELECT id FROM ir_brands WHERE catalog_brand_id = ?',
+      [brand],
+    );
+  }
   if (irBrands.length === 0) return [];
 
   const brandIds = irBrands.map(b => b.id);
@@ -189,18 +207,32 @@ export async function resolveIRCommand(params: {
   // ── Fast path: known codeset ─────────────────────────────────────────────
   if (codesetId) {
     const code = d.getFirstSync<CodeRow>(
-      `SELECT pronto_hex, raw_pattern, raw_frequency_hz FROM ir_codes
-       WHERE codeset_id = ? AND function_name IN (${ph(aliases.length)}) LIMIT 1`,
+      `SELECT c.pronto_hex, c.raw_pattern, c.raw_frequency_hz,
+              cs.carrier_frequency_hz AS codeset_carrier_hz
+       FROM ir_codes c JOIN ir_codesets cs ON c.codeset_id = cs.id
+       WHERE c.codeset_id = ? AND c.function_name IN (${ph(aliases.length)}) LIMIT 1`,
       [codesetId, ...aliases],
     );
     if (code) return { ...buildPayload(code), codesetId };
   }
 
   // ── Slow path: find best-matching codeset ────────────────────────────────
-  const irBrands = d.getAllSync<{ id: string }>(
+  let irBrands = d.getAllSync<{ id: string }>(
     'SELECT id FROM ir_brands WHERE catalog_brand_id = ? AND category = ?',
     [brand, category],
   );
+  if (irBrands.length === 0) {
+    irBrands = d.getAllSync<{ id: string }>(
+      "SELECT id FROM ir_brands WHERE catalog_brand_id = ? AND category = 'other'",
+      [brand],
+    );
+  }
+  if (irBrands.length === 0) {
+    irBrands = d.getAllSync<{ id: string }>(
+      'SELECT id FROM ir_brands WHERE catalog_brand_id = ?',
+      [brand],
+    );
+  }
   if (irBrands.length === 0) return { payload: null, format: null };
 
   const brandIds = irBrands.map(b => b.id);
@@ -217,8 +249,10 @@ export async function resolveIRCommand(params: {
 
   for (const { id: csId } of ranked) {
     const code = d.getFirstSync<CodeRow>(
-      `SELECT pronto_hex, raw_pattern, raw_frequency_hz FROM ir_codes
-       WHERE codeset_id = ? AND function_name IN (${ph(aliases.length)}) LIMIT 1`,
+      `SELECT c.pronto_hex, c.raw_pattern, c.raw_frequency_hz,
+              cs.carrier_frequency_hz AS codeset_carrier_hz
+       FROM ir_codes c JOIN ir_codesets cs ON c.codeset_id = cs.id
+       WHERE c.codeset_id = ? AND c.function_name IN (${ph(aliases.length)}) LIMIT 1`,
       [csId, ...aliases],
     );
     if (code) return { ...buildPayload(code), codesetId: csId };

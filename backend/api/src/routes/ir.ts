@@ -191,6 +191,13 @@ export async function irRouter(fastify: FastifyInstance): Promise<void> {
 
     // ── Fast path: direct codeset lookup (user already selected codeset) ──
     if (codesetId) {
+      const { data: csData } = await db
+        .from('ir_codesets')
+        .select('carrier_frequency_hz')
+        .eq('id', codesetId)
+        .limit(1);
+      const codesetCarrierHz: number = (csData?.[0] as { carrier_frequency_hz?: number } | undefined)?.carrier_frequency_hz ?? 38_000;
+
       const { data: codes } = await db
         .from('ir_codes')
         .select('function_name, pronto_hex, raw_pattern, raw_frequency_hz')
@@ -205,7 +212,7 @@ export async function irRouter(fastify: FastifyInstance): Promise<void> {
           raw_pattern: string | null;
           raw_frequency_hz: number | null;
         };
-        return reply.send(buildPayloadResponse(code));
+        return reply.send(buildPayloadResponse(code, codesetCarrierHz));
       }
     }
 
@@ -246,6 +253,13 @@ export async function irRouter(fastify: FastifyInstance): Promise<void> {
 
     // Try to find the command in ranked codesets
     for (const csId of rankedIds) {
+      const { data: csData } = await db
+        .from('ir_codesets')
+        .select('carrier_frequency_hz')
+        .eq('id', csId)
+        .limit(1);
+      const codesetCarrierHz: number = (csData?.[0] as { carrier_frequency_hz?: number } | undefined)?.carrier_frequency_hz ?? 38_000;
+
       const { data: codes } = await db
         .from('ir_codes')
         .select('function_name, pronto_hex, raw_pattern, raw_frequency_hz')
@@ -260,7 +274,7 @@ export async function irRouter(fastify: FastifyInstance): Promise<void> {
           raw_pattern: string | null;
           raw_frequency_hz: number | null;
         };
-        return reply.send({ ...buildPayloadResponse(code), codesetId: csId });
+        return reply.send({ ...buildPayloadResponse(code, codesetCarrierHz), codesetId: csId });
       }
     }
 
@@ -270,17 +284,21 @@ export async function irRouter(fastify: FastifyInstance): Promise<void> {
 
 // ─── Payload builder ──────────────────────────────────────────────────────────
 
-function buildPayloadResponse(code: {
-  function_name: string;
-  pronto_hex: string | null;
-  raw_pattern: string | null;
-  raw_frequency_hz: number | null;
-}) {
+function buildPayloadResponse(
+  code: {
+    function_name: string;
+    pronto_hex: string | null;
+    raw_pattern: string | null;
+    raw_frequency_hz: number | null;
+  },
+  codesetCarrierHz = 38_000,
+) {
   if (code.pronto_hex) {
     return { payload: code.pronto_hex, format: 'pronto_hex' };
   }
   if (code.raw_pattern) {
-    const freq = code.raw_frequency_hz ?? 38000;
+    // Priority: per-code override → codeset default → industry fallback (38 kHz)
+    const freq = code.raw_frequency_hz ?? codesetCarrierHz;
     const payload = JSON.stringify({ frequency: freq, pattern: JSON.parse(code.raw_pattern) });
     return { payload, format: 'raw_json' };
   }

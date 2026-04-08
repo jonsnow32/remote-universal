@@ -84,7 +84,15 @@ export function useIRResolver(params: IRResolverParams): IRResolverHandle {
   const paramsRef = useRef(params);
   paramsRef.current = params;
 
+  // Guard against concurrent transmit calls (e.g. React StrictMode double-invoke).
+  const transmittingRef = useRef(false);
+
   const transmit = useCallback(async (command: string): Promise<IRTransmitResult> => {
+    if (transmittingRef.current) {
+      return { status: 'sent' }; // second call is a no-op
+    }
+    transmittingRef.current = true;
+    try {
     // 1. Check hardware availability
     const available = await IRModule.isAvailable();
     if (!available) {
@@ -132,6 +140,9 @@ export function useIRResolver(params: IRResolverParams): IRResolverHandle {
     // 4. Transmit
     await IRModule.transmit('', payload);
     return { status: 'sent' };
+    } finally {
+      transmittingRef.current = false;
+    }
   }, []);
 
   return { transmit };

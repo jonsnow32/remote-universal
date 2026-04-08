@@ -13,6 +13,7 @@ import crypto from 'crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { IRRawEntry } from './types';
 import { normaliseBrand, normaliseCategory } from './normalise';
+import { protocolToPronto, PROTOCOL_CARRIER_HZ } from './parsers/prontoEncode';
 
 const UPSERT_CHUNK = 500;
 
@@ -160,14 +161,24 @@ export async function writeIREntries(
       .map(e => e.frequency)
       .filter((f): f is number => f !== undefined && !isNaN(f));
 
+    // Fall back to protocol-specific carrier when no explicit frequency in source data
+    // (Flipper "parsed" entries carry no frequency field — use known protocol defaults)
+    const dominantProtocol = mostCommon(protocols, null as unknown as string) || null;
+    let codesetFreq = mostCommon(freqs, 0);
+    if (codesetFreq === 0 && dominantProtocol) {
+      codesetFreq = PROTOCOL_CARRIER_HZ[dominantProtocol.toUpperCase()] ?? 38_000;
+    } else if (codesetFreq === 0) {
+      codesetFreq = 38_000;
+    }
+
     const codesetId = shortHash(`${brandId}/${filePath}`);
 
     codesetRows.push({
       id: codesetId,
       brand_id: brandId,
       model_pattern: modelPattern,
-      protocol_name: mostCommon(protocols, null as unknown as string) || null,
-      carrier_frequency_hz: mostCommon(freqs, 38000),
+      protocol_name: dominantProtocol,
+      carrier_frequency_hz: codesetFreq,
       source: first.source,
       match_confidence: modelPattern ? 0.5 : 0.3,
     });
@@ -182,9 +193,9 @@ export async function writeIREntries(
       // Build pronto hex
       let prontoHex: string | null = e.pronto ?? null;
       if (!prontoHex && e.type === 'parsed' && e.protocol && e.address && e.command) {
-        // Leave pronto_hex null — irLocalDb's resolveIRCommand will use protocol/address/command
-        // fields from command_definitions instead. Store raw address+command in a minimal pronto.
-        // For now we keep null; the app falls back to the catalog command_definitions table.
+        // Encode protocol+address+command → Pronto Hex so the signal is not discarded.
+        // Supported: NEC, NEC42, Samsung32, RC5/RC5X, Sony12/15/20
+        prontoHex = protocolToPronto(e.protocol, e.address, e.command);
       }
 
       // Build raw pattern

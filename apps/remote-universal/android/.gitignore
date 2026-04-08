@@ -14,3 +14,7 @@ local.properties
 
 # Bundle artifacts
 *.jsbundle
+
+# Native module .kt files are compiled from packages/native-modules/android/ directly.
+# Do not commit expo-prebuild copies here.
+app/src/main/java/com/streamless/nativemodules/

@@ -130,6 +130,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [selectedProtocol, setSelectedProtocol] = useState<ConnectionProtocol>('wifi');
+  const [selectedModelProtocols, setSelectedModelProtocols] = useState<ConnectionProtocol[]>([]);
   const [address, setAddress] = useState('');
   const [connectPhase, setConnectPhase] = useState<ConnectPhase>('connecting');
   const [connectError, setConnectError] = useState<string | null>(null);
@@ -142,7 +143,9 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
   const [irCodesets, setIRCodesets] = useState<IRCodeset[]>([]);
   const [irCodesetIndex, setIRCodesetIndex] = useState(0);
   const [irTestPayload, setIRTestPayload] = useState<string | null>(null);
+  const [irTestCommand, setIRTestCommand] = useState<string>('POWER');
   const irSelectedCodesetId = useRef<string | null>(null);
+  const irTransmittingRef = useRef(false);
 
   const { data: brands, isLoading: brandsLoading } = useAllBrands();
   const { data: models, isLoading: modelsLoading } = useModelsByBrand(selectedBrandSlug);
@@ -175,6 +178,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
     setSelectedModel('');
     setSelectedModelId(null);
     setSelectedProtocol(defaultProtocol ?? 'wifi');
+    setSelectedModelProtocols([]);
     setAddress('');
     setConnectPhase('connecting');
     setConnectError(null);
@@ -188,6 +192,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
     setIRCodesets([]);
     setIRCodesetIndex(0);
     setIRTestPayload(null);
+    setIRTestCommand('POWER');
     irSelectedCodesetId.current = null;
   };  // ─── BLE Scan ────────────────────────────────────────────────────────────
 
@@ -253,8 +258,10 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
   const handleModelSelect = (model: CatalogModel) => {
     setSelectedModel(model.model_number);
     setSelectedModelId(model.id);
-    if (model.protocols?.length) {
-      setSelectedProtocol(model.protocols[0] as ConnectionProtocol);
+    const protocols = (model.protocols ?? []) as ConnectionProtocol[];
+    setSelectedModelProtocols(protocols);
+    if (protocols.length && !defaultProtocol) {
+      setSelectedProtocol(protocols[0]);
     }
     if (model.category) {
       setSelectedCategory(model.category as DeviceCategory);
@@ -269,8 +276,10 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
     setSelectedBrandSlug(model.brand_id);
     setSelectedModel(model.model_number);
     setSelectedModelId(model.id);
-    if (model.protocols?.length) {
-      setSelectedProtocol(model.protocols[0] as ConnectionProtocol);
+    const protocols = (model.protocols ?? []) as ConnectionProtocol[];
+    setSelectedModelProtocols(protocols);
+    if (protocols.length && !defaultProtocol) {
+      setSelectedProtocol(protocols[0]);
     }
     if (model.category) {
       setSelectedCategory(model.category as DeviceCategory);
@@ -285,6 +294,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
     setIRCodesets([]);
     setIRCodesetIndex(0);
     setIRTestPayload(null);
+    setIRTestCommand('POWER');
     irSelectedCodesetId.current = null;
 
     // Check IR blaster availability
@@ -318,15 +328,29 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
       setIRSetupPhase('not_found');
       return;
     }
+    // Try commands in priority order: POWER first, then AC-specific fallbacks
+    const testCommands = ['POWER', 'POWER_OFF', 'POWER_ON', 'COOL', 'HEAT', 'OFF', 'ON'];
+    const brand = selectedBrandSlug ?? selectedBrand.toLowerCase();
+    const category = selectedCategory ?? 'tv';
+    const model = selectedModel || undefined;
     try {
-      const resolved = await resolveIRCommand({
-        brand: selectedBrandSlug ?? selectedBrand.toLowerCase(),
-        category: selectedCategory ?? 'tv',
-        model: selectedModel || undefined,
-        command: 'POWER',
-        codesetId: codeset.id,
-      });
+      let resolved: Awaited<ReturnType<typeof resolveIRCommand>> | null = null;
+      let usedCommand = 'POWER';
+      for (const cmd of testCommands) {
+        const r = await resolveIRCommand({ brand, category, model, command: cmd, codesetId: codeset.id });
+        if (r.payload) { resolved = r; usedCommand = cmd; break; }
+      }
+      if (!resolved?.payload) {
+        // No usable command in this codeset — try next
+        if (index + 1 < codesets.length) {
+          await loadTestPayload(codesets, index + 1);
+        } else {
+          setIRSetupPhase('not_found');
+        }
+        return;
+      }
       setIRTestPayload(resolved.payload);
+      setIRTestCommand(usedCommand);
       irSelectedCodesetId.current = codeset.id;
       setIRSetupPhase('testing');
     } catch {
@@ -340,11 +364,14 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
   };
 
   const handleIRTest = async () => {
-    if (!irTestPayload) return;
+    if (!irTestPayload || irTransmittingRef.current) return;
+    irTransmittingRef.current = true;
     try {
       await IRModule.transmit('', irTestPayload);
     } catch {
       // Transmit error is non-fatal — let user still confirm/deny
+    } finally {
+      irTransmittingRef.current = false;
     }
   };
 
@@ -704,8 +731,9 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
             <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
               <ProtocolPicker
                 selected={selectedProtocol}
-                recommended="wifi"
+                recommended={selectedModelProtocols[0] ?? 'wifi'}
                 onSelect={setSelectedProtocol}
+                deviceProtocols={selectedModelProtocols.length > 0 ? selectedModelProtocols : undefined}
               />
 
               <TouchableOpacity style={styles.connectBtn} onPress={handleProtocolNext} activeOpacity={0.8}>
@@ -862,7 +890,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
                     onPress={() => void handleIRTest()}
                     activeOpacity={0.8}
                   >
-                    <Text style={[styles.connectBtnText, { color: '#0A0E1A' }]}>⚡ Send POWER</Text>
+                    <Text style={[styles.connectBtnText, { color: '#0A0E1A' }]}>⚡ Send {irTestCommand}</Text>
                   </TouchableOpacity>
 
                   <Text style={[styles.connectingSubtitle, { marginTop: 24, marginBottom: 8 }]}>

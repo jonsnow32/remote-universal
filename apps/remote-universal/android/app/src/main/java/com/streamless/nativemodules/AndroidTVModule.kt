@@ -41,7 +41,9 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
 
     private val executor = Executors.newCachedThreadPool()
 
-    // ── IME text debounce ──────────────────────────────────────────────────────
+    // ── IME text debounce ───────────────────────────────────────────────────
+    // sendText calls are debounced so rapid keystrokes only trigger one ATVRS
+    // RemoteImeKeyInject — avoids flooding the TV with partial updates.
     private val TEXT_DEBOUNCE_MS = 300L
     private val textDebounceScheduler: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor()
@@ -62,41 +64,12 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
 
     // ── Persistent remote-control sessions (ip → open TLS session on 6466) ─
     private val remoteSessions = ConcurrentHashMap<String, RemoteSession>()
-    // Serialises connect() so debounce + submitText can never race each other.
-    private val sessionLock = Any()
-
-    /**
-     * Return the live session for [ip], or create and connect a new one.
-     * Guaranteed: only one thread can run connect() for a given [ip] at a time.
-     * Caller must propagate exceptions and call [remoteSessions].remove(ip) on failure.
-     */
-    private fun getOrConnectSession(ip: String): RemoteSession {
-        // Fast path – no lock needed when a live session is already there.
-        remoteSessions[ip]?.takeIf { it.alive }?.let { return it }
-        // Slow path – serialise the connect so only one thread ever calls connect().
-        synchronized(sessionLock) {
-            // Re-check under lock: another thread may have just connected.
-            remoteSessions[ip]?.takeIf { it.alive }?.let { return it }
-            // Close the dead session (if any) only after we know we'll replace it.
-            remoteSessions.remove(ip)?.close()
-            val s = RemoteSession(ip)
-            s.connect()              // may throw; don't store on failure
-            remoteSessions[ip] = s   // only store after successful connect
-            return s
-        }
-    }
 
     private inner class RemoteSession(val ip: String) {
         var socket: SSLSocket? = null
         var output: OutputStream? = null
         @Volatile var alive = false
         private val writeLock = Any()
-        @Volatile var imeActive = false       // true when TV reported an active text field
-        @Volatile var setActiveDone = false   // true after SetActive exchange completes
-        @Volatile var imeRejected = false     // true after error 5 on this session — don't retry IME
-        var lastSentText = ""                 // last text sent (for per-char diff)
-        var imeCounter = 0                    // echoed from TV's remote_ime_batch_edit
-        var imeFieldCounter = 0               // echoed from TV's remote_ime_batch_edit
 
         fun connect() {
             android.util.Log.d("AndroidTV", "[$ip] connect() — opening remote session on port 6466")
@@ -124,28 +97,19 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
                 android.util.Log.d("AndroidTV", "[$ip] handshake msg fields: ${fields.keys}")
                 when {
                     fields.containsKey(RMF_CONFIGURE) -> {
-                        val cfgBytes = (fields[RMF_CONFIGURE] as? ByteArray) ?: ByteArray(0)
-                        val cfgFields = decodeMessage(cfgBytes)
-                        val tvFeatures = (cfgFields[1] as? Long)?.toInt() ?: 0
-                        android.util.Log.d("AndroidTV",
-                            "[$ip] TV Configure code1=$tvFeatures (IME=${tvFeatures and 4 != 0})")
-                        android.util.Log.d("AndroidTV", "[$ip] → sending Configure + SetActive")
+                        android.util.Log.d("AndroidTV", "[$ip] → sending Configure")
                         out.write(buildRemoteMessage(mapOf(
-                            RMF_CONFIGURE to V_MSG(buildRemoteConfigure(tvFeatures)),
+                            RMF_CONFIGURE to V_MSG(buildRemoteConfigure()),
                         )))
-                        // Send SetActive immediately after Configure — required for
-                        // the TV to start pushing IME events (field 20/22).
+                        out.flush()
+                        ready = true
+                    }
+                    fields.containsKey(RMF_SET_ACTIVE) -> {
+                        android.util.Log.d("AndroidTV", "[$ip] → sending SetActive")
                         out.write(buildRemoteMessage(mapOf(
                             RMF_SET_ACTIVE to V_MSG(varintField(1, 622)),
                         )))
                         out.flush()
-                        setActiveDone = true
-                        ready = true
-                    }
-                    fields.containsKey(RMF_SET_ACTIVE) -> {
-                        // TV's SetActive may arrive during handshake — acknowledge.
-                        android.util.Log.d("AndroidTV", "[$ip] handshake: TV SetActive received")
-                        setActiveDone = true
                     }
                     fields.containsKey(RMF_PING) -> {
                         android.util.Log.d("AndroidTV", "[$ip] → responding to Ping")
@@ -158,25 +122,6 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
                         )))
                         out.flush()
                     }
-                    fields.containsKey(RMF_IME_KEY_INJECT) -> {
-                        // TV is advertising an active text field during handshake.
-                        val info = decodeImeMessage(
-                            (fields[RMF_IME_KEY_INJECT] as? ByteArray) ?: ByteArray(0))
-                        imeActive    = info.hasTextField
-                        lastSentText = info.text
-                        android.util.Log.d("AndroidTV",
-                            "[$ip] handshake: TV IME hasField=${info.hasTextField} text='${info.text}' hint='${info.hint}' → imeActive=$imeActive")
-                        emitImeEvent(ip, info.text, info.hint, imeActive)
-                    }
-                    fields.containsKey(RMF_IME_SHOW_REQ) -> {
-                        val info = decodeImeShowRequest(
-                            (fields[RMF_IME_SHOW_REQ] as? ByteArray) ?: ByteArray(0))
-                        imeActive = info.hasTextField
-                        lastSentText = info.text
-                        android.util.Log.d("AndroidTV",
-                            "[$ip] handshake: TV ImeShowReq hasField=${info.hasTextField} text='${info.text}' hint='${info.hint}'")
-                        emitImeEvent(ip, info.text, info.hint, imeActive)
-                    }
                 }
             }
             if (!ready) {
@@ -188,102 +133,25 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
             alive = true
 
             // Background reader thread: handles ping/pong to keep the session alive.
-            // SocketTimeoutException means no data arrived within soTimeout — the
-            // session is still valid, just idle.  We catch it and loop so the
-            // session is not killed by a stale TV that skips a ping cycle.
             executor.execute {
                 try {
                     while (alive) {
-                        try {
-                            val msg = readDelimitedMessage(inp) ?: break  // null = real EOF
-                            val fields = decodeMessage(msg)
-                            android.util.Log.d("AndroidTV", "[$ip] reader: msg fields=${fields.keys}")
-                            when {
-                                fields.containsKey(RMF_SET_ACTIVE) -> {
-                                    android.util.Log.d("AndroidTV",
-                                        "[$ip] reader: TV SetActive received")
-                                    if (!setActiveDone) {
-                                        // Respond with our SetActive if not yet sent.
-                                        synchronized(writeLock) {
-                                            out.write(buildRemoteMessage(mapOf(
-                                                RMF_SET_ACTIVE to V_MSG(varintField(1, 622)),
-                                            )))
-                                            out.flush()
-                                        }
-                                        setActiveDone = true
-                                    }
+                        val msg = readDelimitedMessage(inp) ?: break
+                        val fields = decodeMessage(msg)
+                        when {
+                            fields.containsKey(RMF_PING) -> {
+                                val pf = decodeMessage(
+                                    (fields[RMF_PING] as? ByteArray) ?: ByteArray(0)
+                                )
+                                val v = (pf[1] as? Long)?.toInt() ?: 0
+                                synchronized(writeLock) {
+                                    out.write(buildRemoteMessage(mapOf(
+                                        RMF_PONG to V_MSG(varintField(1, v)),
+                                    )))
+                                    out.flush()
                                 }
-                                fields.containsKey(RMF_PING) -> {
-                                    val pf = decodeMessage(
-                                        (fields[RMF_PING] as? ByteArray) ?: ByteArray(0)
-                                    )
-                                    val v = (pf[1] as? Long)?.toInt() ?: 0
-                                    synchronized(writeLock) {
-                                        out.write(buildRemoteMessage(mapOf(
-                                            RMF_PONG to V_MSG(varintField(1, v)),
-                                        )))
-                                        out.flush()
-                                    }
-                                }
-                                fields.containsKey(RMF_IME_KEY_INJECT) -> {
-                                    // TV updated which text field is active.
-                                    val info = decodeImeMessage(
-                                        (fields[RMF_IME_KEY_INJECT] as? ByteArray) ?: ByteArray(0))
-                                    imeActive    = info.hasTextField
-                                    lastSentText = info.text
-                                    android.util.Log.d("AndroidTV",
-                                        "[$ip] TV IME hasField=${info.hasTextField} text='${info.text}' hint='${info.hint}' → imeActive=$imeActive")
-                                    emitImeEvent(ip, info.text, info.hint, imeActive)
-                                }
-                                fields.containsKey(RMF_IME_SHOW_REQ) -> {
-                                    // TV asks us to show the IME — contains text field status.
-                                    val info = decodeImeShowRequest(
-                                        (fields[RMF_IME_SHOW_REQ] as? ByteArray) ?: ByteArray(0))
-                                    imeActive = info.hasTextField
-                                    lastSentText = info.text
-                                    android.util.Log.d("AndroidTV",
-                                        "[$ip] TV ImeShowReq hasField=${info.hasTextField} text='${info.text}' hint='${info.hint}'")
-                                    emitImeEvent(ip, info.text, info.hint, imeActive)
-                                }
-                                fields.containsKey(RMF_IME_BATCH_EDIT) -> {
-                                    // TV sends batch edit with counter values — store them.
-                                    val beBytes = (fields[RMF_IME_BATCH_EDIT] as? ByteArray) ?: ByteArray(0)
-                                    val beFields = decodeMessage(beBytes)
-                                    imeCounter = (beFields[1] as? Long)?.toInt() ?: imeCounter
-                                    imeFieldCounter = (beFields[2] as? Long)?.toInt() ?: imeFieldCounter
-                                    android.util.Log.d("AndroidTV",
-                                        "[$ip] TV ImeBatchEdit: imeCounter=$imeCounter fieldCounter=$imeFieldCounter")
-                                }
-                                fields.containsKey(RMF_ERROR) -> {
-                                    val errBytes = (fields[RMF_ERROR] as? ByteArray) ?: ByteArray(0)
-                                    val errFields = decodeMessage(errBytes)
-                                    val code = (errFields[1] as? Long)?.toInt() ?: -1
-                                    android.util.Log.e("AndroidTV",
-                                        "[$ip] RemoteError code=$code — TV rejected IME")
-                                    imeActive = false
-                                    imeRejected = true
-                                }
-                                else -> {
-                                    // Log unknown fields for protocol investigation.
-                                    fields.entries.forEach { (k, v) ->
-                                        if (k != RMF_PING && k != RMF_PONG
-                                                && k != RMF_IME_KEY_INJECT && k != RMF_IME_BATCH_EDIT
-                                                && k != RMF_IME_SHOW_REQ
-                                                && k != RMF_ERROR && k != RMF_CONFIGURE
-                                                && k != RMF_SET_ACTIVE && k != RMF_KEY) {
-                                            val raw = if (v is ByteArray)
-                                                v.take(32).joinToString("") { "%02x".format(it) }
-                                            else v.toString()
-                                            android.util.Log.d("AndroidTV",
-                                                "[$ip] unknown field $k = $raw")
-                                        }
-                                    }
-                                }
-                                // Ignore other messages (SetActive, etc.)
                             }
-                        } catch (e: java.net.SocketTimeoutException) {
-                            // No data within soTimeout — TV is idle, not dead.  Keep going.
-                            continue
+                            // Ignore other messages (SetActive, etc.)
                         }
                     }
                 } catch (e: Exception) {
@@ -308,87 +176,24 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
             }
         }
 
+        /**
+         * Replace the content of the currently focused IME input field on the TV.
+         *
+         * Uses ATVRS RemoteImeKeyInject (RemoteMessage field 12) which replaces
+         * the entire field value in one round-trip — far more efficient than
+         * sending individual keycodes.  The TV's IME must already be focused
+         * (i.e. the user has tapped a search / text field on-screen).
+         *
+         * RemoteImeKeyInject layout:
+         *   field 1 (string): text_field   — the full replacement text
+         *   field 3 (varint): text_field_status — 4 = HAS_TEXT / in-progress
+         */
         fun sendImeBatchEdit(text: String) {
             val out = output ?: throw IOException("Not connected")
-            android.util.Log.d("AndroidTV", "[$ip] sendImeBatchEdit: imeCounter=$imeCounter fieldCounter=$imeFieldCounter text='$text'")
             synchronized(writeLock) {
-                // RemoteImeBatchEdit (top-level field 21 in RemoteMessage)
-                // Proto structure (from tronikos/androidtvremote2):
-                //   field 1 (varint): ime_counter  — echoed from TV
-                //   field 2 (varint): field_counter — echoed from TV
-                //   field 3 (message, repeated): RemoteEditInfo {
-                //       field 1 (varint): insert = 1
-                //       field 2 (message): RemoteImeObject {
-                //           field 1 (varint): start = len(text) - 1
-                //           field 2 (varint): end   = len(text) - 1
-                //           field 3 (string):  value = text
-                //       }
-                //   }
-                val paramValue = maxOf(text.length - 1, 0)
-                val imeObject = varintField(1, paramValue) +
-                                varintField(2, paramValue) +
-                                stringField(3, text)
-                val editInfo = varintField(1, 1) + lenField(2, imeObject)
-                val batchEdit = varintField(1, imeCounter) +
-                                varintField(2, imeFieldCounter) +
-                                lenField(3, editInfo)
-                out.write(buildRemoteMessage(mapOf(RMF_IME_BATCH_EDIT to V_MSG(batchEdit))))
+                val imeFields = stringField(1, text) + varintField(3, 4)
+                out.write(buildRemoteMessage(mapOf(RMF_IME to V_MSG(imeFields))))
                 out.flush()
-            }
-        }
-
-        /**
-         * Inject text character-by-character, sending only the diff vs [oldText].
-         * Used as fallback when the TV has not opened an IME session (imeActive=false).
-         */
-        private fun sendTextPerChar(oldText: String, newText: String) {
-            var common = 0
-            while (common < oldText.length && common < newText.length
-                    && oldText[common] == newText[common]) {
-                common++
-            }
-            repeat(oldText.length - common) {
-                sendKeyImmediate(KEYCODE_DEL)
-                Thread.sleep(80)
-            }
-            for (ch in newText.substring(common)) {
-                val kc = CHAR_KEY_MAP[ch.lowercaseChar()] ?: continue
-                sendKeyImmediate(kc)
-                Thread.sleep(80)
-            }
-        }
-
-        /**
-         * Route text to the TV.
-         *
-         * RMF_IME (batch edit) is the ONLY reliable text injection method.
-         * Per-char D-pad keycodes are swallowed by the TV's on-screen keyboard
-         * (Leanback IME) and never reach the text field.
-         *
-         * Standard Android TV does NOT push field 12 to tell us when a text field
-         * is active.  If we send RMF_IME when no text field is active the TV
-         * replies with RemoteError code=5 and kills the TLS session.  On the
-         * next call [getOrConnectSession] auto-reconnects and we retry IME.
-         *
-         * The user is expected to navigate to a search/text field on the TV
-         * before typing on the remote.  When a text field IS active, RMF_IME
-         * works on all Android TV variants.
-         */
-        fun sendTextContent(text: String) {
-            if (imeActive || (!imeRejected && setActiveDone)) {
-                // IME: either TV explicitly told us (Google TV) or protocol is
-                // ready and we haven't been rejected yet (standard Android TV).
-                android.util.Log.d("AndroidTV",
-                    "[$ip] sendTextContent: IME path, text='$text'")
-                sendImeBatchEdit(text)
-                lastSentText = text
-            } else {
-                // Fallback: per-char (works poorly but doesn't crash).
-                val old = lastSentText
-                lastSentText = text
-                android.util.Log.d("AndroidTV",
-                    "[$ip] sendTextContent: per-char fallback, old='$old' new='$text'")
-                sendTextPerChar(old, text)
             }
         }
 
@@ -550,7 +355,10 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
                 return@execute
             }
             try {
-                getOrConnectSession(ip)   // reuses existing live session if present
+                val session = RemoteSession(ip)
+                session.connect()
+                remoteSessions[ip]?.close()
+                remoteSessions[ip] = session
                 promise.resolve(null)
             } catch (e: Exception) {
                 val msg = e.message ?: "Unknown error"
@@ -576,11 +384,7 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
      */
     @ReactMethod
     fun disconnectRemote(ip: String, promise: Promise) {
-        // Use sessionLock to avoid racing with a concurrent getOrConnectSession
-        // that may have just stored a freshly-connected session.
-        synchronized(sessionLock) {
-            remoteSessions.remove(ip)?.close()
-        }
+        remoteSessions.remove(ip)?.close()
         promise.resolve(null)
     }
 
@@ -597,10 +401,19 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
             }
 
             try {
-                val session = getOrConnectSession(ip)
+                var session = remoteSessions[ip]
+                // Reconnect if there is no session or it died.
+                if (session == null || !session.alive) {
+                    session?.close()
+                    val newSession = RemoteSession(ip)
+                    newSession.connect()
+                    remoteSessions[ip] = newSession
+                    session = newSession
+                }
                 session.sendKeyImmediate(keyCode)
                 promise.resolve(null)
             } catch (e: Exception) {
+                // On failure, tear down the session so next call retries.
                 remoteSessions.remove(ip)?.close()
                 val msg = e.message ?: "Unknown error"
                 if (msg.contains("ECONNRESET") || msg.contains("reset")) {
@@ -613,96 +426,22 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
         }
     }
 
-    // ─── Event helpers ────────────────────────────────────────────────────────
-
     /**
-     * Decode a RemoteImeKeyInject payload received from the TV.
+     * Stream a text value to the focused IME field on a paired Android TV,
+     * debounced 300 ms so rapid keystrokes collapse into a single ATVRS message.
      *
-     * Proto layout (TV → client):
-     *   field 1 (string): text_field identifier (often empty)
-     *   field 1 (message): RemoteAppInfo
-     *   field 2 (message): RemoteTextFieldStatus
-     *
-     * RemoteTextFieldStatus:
-     *   field 1 (varint): counter_field
-     *   field 2 (bytes):  value  — current text in the text field
-     *   field 3 (varint): start
-     *   field 4 (varint): end
-     *   field 5 (varint): int5
-     *   field 6 (bytes):  label  — hint / placeholder text
-     *
-     * Returns Triple(hasTextField, text, hint).
+     * Resolves immediately (before the debounce fires) so the JS bridge is never
+     * blocked.  Use this for real-time keyboard mirroring.
      */
-    private data class ImeTextInfo(val hasTextField: Boolean, val text: String, val hint: String)
-
-    private fun decodeImeMessage(bytes: ByteArray): ImeTextInfo {
-        val f = decodeMessage(bytes)
-        android.util.Log.d("AndroidTV", "  IME raw fields: ${f.map { (k,v) ->
-            "$k=${if (v is ByteArray) v.take(32).joinToString("") { "%02x".format(it) } else v}" }}")
-        val statusBytes = (f[2] as? ByteArray)
-        if (statusBytes == null) {
-            android.util.Log.d("AndroidTV", "  IME: no RemoteTextFieldStatus (field 2)")
-            return ImeTextInfo(false, "", "")
-        }
-        val sf = decodeMessage(statusBytes)
-        android.util.Log.d("AndroidTV", "  TextFieldStatus fields: ${sf.map { (k,v) ->
-            "$k=${if (v is ByteArray) "'${String(v, Charsets.UTF_8)}'" else v}" }}")
-        val text  = (sf[2] as? ByteArray)?.let { String(it, Charsets.UTF_8) } ?: ""
-        val hint  = (sf[6] as? ByteArray)?.let { String(it, Charsets.UTF_8) } ?: ""
-        return ImeTextInfo(true, text, hint)
-    }
-
-    /**
-     * Decode RemoteImeShowRequest (field 22):
-     *   field 2 (message): RemoteTextFieldStatus
-     */
-    private fun decodeImeShowRequest(bytes: ByteArray): ImeTextInfo {
-        val f = decodeMessage(bytes)
-        android.util.Log.d("AndroidTV", "  ImeShowReq raw fields: ${f.map { (k,v) ->
-            "$k=${if (v is ByteArray) v.take(32).joinToString("") { "%02x".format(it) } else v}" }}")
-        val statusBytes = (f[2] as? ByteArray)
-        if (statusBytes == null) {
-            android.util.Log.d("AndroidTV", "  ImeShowReq: no RemoteTextFieldStatus (field 2)")
-            return ImeTextInfo(true, "", "")  // show request itself means IME is active
-        }
-        val sf = decodeMessage(statusBytes)
-        android.util.Log.d("AndroidTV", "  ShowReq TextFieldStatus fields: ${sf.map { (k,v) ->
-            "$k=${if (v is ByteArray) "'${String(v, Charsets.UTF_8)}'" else v}" }}")
-        val text = (sf[2] as? ByteArray)?.let { String(it, Charsets.UTF_8) } ?: ""
-        val hint = (sf[6] as? ByteArray)?.let { String(it, Charsets.UTF_8) } ?: ""
-        return ImeTextInfo(true, text, hint)
-    }
-
-    /** Emit the current TV IME state to JS. */
-    private fun emitImeEvent(ip: String, text: String, hint: String, active: Boolean) {
-        val params = com.facebook.react.bridge.Arguments.createMap().apply {
-            putString("ip", ip)
-            putString("text", text)
-            putString("hint", hint)
-            putBoolean("active", active)
-        }
-        rc.getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-            .emit("AndroidTVIme", params)
-    }
-
-    // ── Required override for the module to support events ──────────────────
-
-    override fun getConstants(): Map<String, Any> = emptyMap()
-
-    @ReactMethod
-    fun addListener(eventName: String) { /* required by RN */ }
-
-    @ReactMethod
-    fun removeListeners(count: Double) { /* required by RN */ }
-
     @ReactMethod
     fun sendText(ip: String, text: String, promise: Promise) {
         if (!loadPairedIps().contains(ip)) {
             promise.reject("NOT_PAIRED", "Device $ip is not paired")
             return
         }
+        // Resolve immediately — JS doesn't need to wait for the debounce.
         promise.resolve(null)
-        // Cancel stale debounce so old text never leaks into a fresh session.
+        // Cancel previous scheduled send; schedule a fresh one.
         textDebounceJob?.cancel(false)
         textDebounceIp   = ip
         textDebounceText = text
@@ -711,31 +450,50 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
             val i = textDebounceIp
             executor.execute {
                 try {
-                    val session = getOrConnectSession(i)
-                    session.sendTextContent(t)
+                    var session = remoteSessions[i]
+                    if (session == null || !session.alive) {
+                        session?.close()
+                        val s = RemoteSession(i)
+                        s.connect()
+                        remoteSessions[i] = s
+                        session = s
+                    }
+                    session.sendImeBatchEdit(t)
                 } catch (e: Exception) {
-                    remoteSessions.remove(i)?.close()
                     android.util.Log.e("AndroidTV", "debounced sendText error: ${e.message}")
                 }
             }
         }, TEXT_DEBOUNCE_MS, TimeUnit.MILLISECONDS)
     }
 
+    /**
+     * Immediately send text to the focused IME field then press ENTER.
+     * Cancels any pending debounced [sendText] call first.
+     * Use this for the final submit action.
+     */
     @ReactMethod
     fun submitText(ip: String, text: String, promise: Promise) {
         if (!loadPairedIps().contains(ip)) {
             promise.reject("NOT_PAIRED", "Device $ip is not paired")
             return
         }
+        // Cancel any in-flight debounce — we're about to send the final value.
         textDebounceJob?.cancel(false)
         textDebounceJob = null
         executor.execute {
             try {
-                val session = getOrConnectSession(ip)
-                session.sendTextContent(text)
+                var session = remoteSessions[ip]
+                if (session == null || !session.alive) {
+                    session?.close()
+                    val s = RemoteSession(ip)
+                    s.connect()
+                    remoteSessions[ip] = s
+                    session = s
+                }
+                session.sendImeBatchEdit(text)
+                // Small gap so the TV's IME commits the text before ENTER arrives.
                 Thread.sleep(80)
                 session.sendKeyImmediate(KEYCODE_ENTER)
-                session.lastSentText = ""  // TV likely clears the field after submit
                 promise.resolve(null)
             } catch (e: Exception) {
                 remoteSessions.remove(ip)?.close()
@@ -1003,44 +761,20 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
     // RemoteMessage field numbers
     private val RMF_CONFIGURE  = 1
     private val RMF_SET_ACTIVE = 2
-    private val RMF_ERROR      = 3  // RemoteError
     private val RMF_PING       = 8
     private val RMF_PONG       = 9
     private val RMF_KEY        = 10
-    private val RMF_IME_KEY_INJECT  = 20  // RemoteImeKeyInject
-    private val RMF_IME_BATCH_EDIT  = 21  // RemoteImeBatchEdit (top-level!)
-    private val RMF_IME_SHOW_REQ   = 22  // RemoteImeShowRequest
+    private val RMF_IME        = 12  // RemoteImeKeyInject
     private val DIR_SHORT      = 3   // RemoteDirection.SHORT
-    private val KEYCODE_ENTER  = 66
-    private val KEYCODE_DEL    = 67  // KEYCODE_DEL (backspace)
-    /** Lowercase char → Android key code for per-char fallback injection. */
-    private val CHAR_KEY_MAP = mapOf(
-        ' '  to 62,
-        '0'  to 7,  '1' to 8,  '2' to 9,  '3' to 10, '4' to 11,
-        '5'  to 12, '6' to 13, '7' to 14, '8' to 15,  '9' to 16,
-        'a'  to 29, 'b' to 30, 'c' to 31, 'd' to 32,  'e' to 33,
-        'f'  to 34, 'g' to 35, 'h' to 36, 'i' to 37,  'j' to 38,
-        'k'  to 39, 'l' to 40, 'm' to 41, 'n' to 42,  'o' to 43,
-        'p'  to 44, 'q' to 45, 'r' to 46, 's' to 47,  't' to 48,
-        'u'  to 49, 'v' to 50, 'w' to 51, 'x' to 52,  'y' to 53,
-        'z'  to 54,
-    )
+    private val KEYCODE_ENTER  = 66  // KEYCODE_ENTER
 
     private fun buildRemoteMessage(fields: Map<Int, Val>) = delimited(buildMessage(fields))
 
-    private fun buildRemoteConfigure(tvFeatures: Int = 622): ByteArray {
-        // Intersect TV's supported features with what we want.
-        // Feature flags: PING=1, KEY=2, IME=4, VOICE=8, POWER=32, VOLUME=64, APP_LINK=512
-        val wantFeatures = 1 or 2 or 4 or 32 or 64 or 512  // PING|KEY|IME|POWER|VOLUME|APP_LINK
-        val activeFeatures = tvFeatures and wantFeatures
+    private fun buildRemoteConfigure(): ByteArray {
         val deviceInfo =
             stringField(1, android.os.Build.MODEL) +
-            stringField(2, android.os.Build.MANUFACTURER) +
-            varintField(3, 1) +
-            stringField(4, "1") +
-            stringField(5, "com.streamless.remote") +
-            stringField(6, "1.0.0")
-        return varintField(1, activeFeatures) + lenField(2, deviceInfo)
+            stringField(2, android.os.Build.MANUFACTURER)
+        return varintField(1, 622) + lenField(2, deviceInfo)
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -1076,19 +810,15 @@ class AndroidTVModule(private val rc: ReactApplicationContext) :
 
     /** Read a length-prefixed protobuf message from the stream. Returns null on EOF. */
     private fun readDelimitedMessage(inp: InputStream): ByteArray? {
-        // Decode the varint length prefix one byte at a time, stopping as soon as
-        // the continuation bit (0x80) is clear.  The old implementation checked the
-        // *accumulated value* for the continuation bit, which caused it to loop for
-        // a second pass on any message whose length is >= 128 bytes — reading one
-        // extra byte into the body as part of the length.
-        var len = 0
-        var shift = 0
-        while (true) {
-            val b = inp.read()   // -1 on EOF, 0-255 otherwise
-            if (b < 0) return null
-            len = len or ((b and 0x7F) shl shift)
+        val lenBuf = ByteArray(1)
+        if (inp.read(lenBuf) != 1) return null
+        var len = lenBuf[0].toInt() and 0xFF
+        // Handle multi-byte varint length (rare for these small messages).
+        var shift = 7
+        while (len and 0x80 != 0) {
+            if (inp.read(lenBuf) != 1) return null
+            len = (len and 0x7F) or ((lenBuf[0].toInt() and 0xFF) shl shift)
             shift += 7
-            if (b and 0x80 == 0) break  // no continuation bit — varint complete
         }
         if (len == 0) return ByteArray(0)
         val buf = ByteArray(len)

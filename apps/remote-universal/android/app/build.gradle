@@ -81,6 +81,23 @@ def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBu
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+// ── Native modules source sync ────────────────────────────────────────────────
+// Copy .kt files from packages/native-modules/android/ into the Android source
+// tree before every build, so edits in packages/ are always compiled.
+// The destination directory is git-ignored; the source of truth is packages/.
+// project.file() resolves relative to android/app/ (4 levels up to monorepo root).
+def nativeModulesSrc = project.file("../../../../packages/native-modules/android")
+def nativeModulesDest = "src/main/java/com/streamless/nativemodules"
+
+task syncNativeModules(type: Copy) {
+    description = 'Sync .kt files from packages/native-modules/android into the Android app source tree'
+    from nativeModulesSrc
+    into nativeModulesDest
+    include '*.kt'
+}
+
+preBuild.dependsOn syncNativeModules
+
 android {
     ndkVersion rootProject.ext.ndkVersion
 

@@ -282,9 +282,12 @@ export function normaliseIREntries(entries: IRRawEntry[]): NormalisedModelEntry[
     const first = fileEntries[0]!;
     const brand = normaliseBrand(first.brand_raw);
     const category = normaliseCategory(first.category_raw);
-    // Derive model number from the filename
-    const fileName = filePath.split(/[/\\]/).pop() ?? filePath;
-    const modelNumber = fileName.replace(/\.ir$|\.csv$/, '').replace(/,/g, '_');
+    // Derive model number: prefer explicit hint (e.g. SmartIR supportedModels),
+    // otherwise fall back to the filename with all known extensions stripped.
+    const modelNumber = first.model_hint
+      ?? (filePath.split(/[/\\]/).pop() ?? filePath)
+           .replace(/\.ir$|\.csv$|\.json$/, '')
+           .replace(/,/g, '_');
 
     const commands: NormalisedCommand[] = fileEntries.map(e =>
       normaliseIRCommand(e)

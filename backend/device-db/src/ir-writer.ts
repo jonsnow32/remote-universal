@@ -149,9 +149,12 @@ export async function writeIREntries(
     const category = normaliseCategory(first.category_raw);
     const brandId = `${brand.slug}-${category}`;
 
-    // Derive model pattern from filename
-    const fileName = filePath.split(/[/\\]/).pop() ?? '';
-    const modelPattern = fileName.replace(/\.ir$|\.csv$/, '').replace(/,/g, '_') || null;
+    // Derive model pattern: prefer explicit hint (e.g. SmartIR supportedModels),
+    // otherwise strip all known IR-source extensions from the filename.
+    const modelPattern = first.model_hint
+      ?? ((filePath.split(/[/\\]/).pop() ?? '')
+           .replace(/\.ir$|\.csv$|\.json$/, '')
+           .replace(/,/g, '_') || null);
 
     // Derive dominant protocol and frequency for this codeset
     const protocols = fileEntries

@@ -16,6 +16,7 @@ import type {
 } from './types';
 import { fetchAll } from './fetchers/index';
 import { parseFlipperIR, parseIRDBCSV } from './parsers/irdb';
+import { parseSmartIR } from './parsers/smartirParser';
 import { parseOEMFetchResult } from './parsers/oem';
 import { normaliseOEMDevice, normaliseIREntries } from './normalise';
 import { deduplicateEntries } from './dedup';
@@ -34,7 +35,7 @@ export async function runPipeline(
   // ──────────────────────────────────────────────────────────────────────
   // Stage 1: Fetch
   // ──────────────────────────────────────────────────────────────────────
-  const { oemResults, irdbResults, flipperResults } = await fetchAll(opts);
+  const { oemResults, irdbResults, flipperResults, smartirResults } = await fetchAll(opts);
 
   // ──────────────────────────────────────────────────────────────────────
   // Stage 2 + 3: Parse → Normalise
@@ -54,6 +55,9 @@ export async function runPipeline(
   }
   for (const r of irdbResults) {
     irEntries.push(...parseIRDBCSV(r));
+  }
+  for (const r of smartirResults) {
+    irEntries.push(...parseSmartIR(r));
   }
   const normalisedIR: NormalisedModelEntry[] = normaliseIREntries(irEntries);
 

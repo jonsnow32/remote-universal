@@ -22,6 +22,13 @@ function scoreModelPattern(modelNumber: string, pattern: string | null | undefin
   const m = modelNumber.toUpperCase().trim();
   const p = pattern.toUpperCase().trim();
   if (m === p) return 1.0;
+  // Comma-separated model list (e.g. SmartIR supportedModels: "ATKC09TV2S,FTKQ12TV2S")
+  if (p.includes(',')) {
+    const parts = p.split(',').map(s => s.trim());
+    if (parts.includes(m)) return 0.9;
+    if (parts.some(pm => m.startsWith(pm) || pm.startsWith(m))) return 0.6;
+    return -1;
+  }
   if (p.endsWith('*') && !p.startsWith('*') && m.startsWith(p.slice(0, -1))) return 0.7;
   if (p.startsWith('*') && !p.endsWith('*') && m.endsWith(p.slice(1))) return 0.7;
   if (p.startsWith('*') && p.endsWith('*') && m.includes(p.slice(1, -1))) return 0.6;

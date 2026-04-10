@@ -10,7 +10,8 @@
     "migrate": "ts-node src/migrate.ts",
     "migrate:dry": "ts-node src/migrate.ts --dry-run",
     "export-sqlite": "ts-node src/export-sqlite.ts",
-    "export-sqlite:schema": "ts-node src/export-sqlite.ts --schema"
+    "export-sqlite:schema": "ts-node src/export-sqlite.ts --schema",
+    "reset-db": "ts-node src/reset-db.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.38.0",

@@ -20,6 +20,7 @@ export type SourceId =
   | 'fire_tv'
   | 'irdb'
   | 'flipper'
+  | 'smartir'
   | 'ha_components';
 
 export interface SourceConfig {
@@ -35,6 +36,7 @@ export interface SourceConfig {
 export const SOURCE_REGISTRY: SourceConfig[] = [
   { id: 'irdb',         label: 'IRDB (probonopd)',      tier: 1, enabled: true,  schedule: '0 2 * * 0' },   // weekly Sunday 02:00
   { id: 'flipper',      label: 'Flipper Zero IRDB',     tier: 1, enabled: true,  schedule: '0 3 * * 0' },   // weekly Sunday 03:00
+  { id: 'smartir',      label: 'SmartIR climate codes', tier: 1, enabled: true,  schedule: '0 4 * * 0' },   // weekly Sunday 04:00
   { id: 'samsung_api',  label: 'Samsung SmartThings',   tier: 2, enabled: true,  schedule: '0 1 * * 1' },   // Monday 01:00
   { id: 'lg_api',       label: 'LG ThinQ / WebOS',      tier: 2, enabled: true,  schedule: '0 1 * * 2' },
   { id: 'sony_api',     label: 'Sony BRAVIA',           tier: 2, enabled: true,  schedule: '0 1 * * 3' },
@@ -130,6 +132,12 @@ export interface IRRawEntry {
   raw_data?: number[];
   /** Pronto hex string when pre-encoded in source */
   pronto?: string;
+  /**
+   * Optional comma-separated list of model numbers this codeset applies to.
+   * Set by parsers that have explicit model metadata (e.g. SmartIR supportedModels).
+   * Takes precedence over the filename-derived model number in normalise / ir-writer.
+   */
+  model_hint?: string;
 }
 
 // ─── Stage 3: Normalise ───────────────────────────────────────────────────

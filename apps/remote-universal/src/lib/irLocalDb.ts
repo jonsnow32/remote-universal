@@ -54,6 +54,15 @@ function scoreModelPattern(modelNumber: string, pattern: string | null | undefin
   const m = modelNumber.toUpperCase().trim();
   const p = pattern.toUpperCase().trim();
   if (m === p) return 1.0;
+  // Comma-separated model list (e.g. SmartIR supportedModels: "ATKC09TV2S,FTKQ12TV2S")
+  // Split and check each entry individually.
+  if (p.includes(',')) {
+    const parts = p.split(',').map(s => s.trim());
+    if (parts.includes(m)) return 0.9;
+    // Prefix match against any entry (e.g. user types "ATKC09" matching "ATKC09TV2S")
+    if (parts.some(pm => m.startsWith(pm) || pm.startsWith(m))) return 0.6;
+    return -1;
+  }
   // prefix wildcard: "QN85*"
   if (p.endsWith('*') && !p.startsWith('*') && m.startsWith(p.slice(0, -1))) return 0.7;
   // suffix wildcard: "*QN85"

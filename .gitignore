@@ -51,3 +51,4 @@ coverage/
 # Misc
 .cache/
 docs/deploy.md
+apps/remote-universal/assets/ir.db

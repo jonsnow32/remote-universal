@@ -14,6 +14,7 @@ import type { NormalisedModelEntry, NormalisedCommand, SourceId } from './types'
 const SOURCE_PRIORITY: Record<SourceId, number> = {
   flipper:       1,
   irdb:          2,
+  smartir:       2,
   samsung_api:   3,
   lg_api:        3,
   sony_api:      3,

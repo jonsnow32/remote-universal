@@ -9,6 +9,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { FetchResult, OEMRawDevice, SourceId, PipelineOptions } from '../types';
 import { fetchFlipperIRDB, fetchIRDB } from './irdb';
+import { fetchSmartIR } from './smartir';
 import { allOEMSchemas } from './oem';
 
 const DEFAULT_CACHE_DIR = process.env['CRAWL_CACHE_DIR'] ?? '/tmp/crawl';
@@ -46,6 +47,27 @@ export async function runFlipperFetch(
     return loadCachedResults(cacheDir, 'flipper');
   }
   return fetchFlipperIRDB(cacheDir, opts.verbose);
+}
+
+// ─── SmartIR fetcher ──────────────────────────────────────────────────────
+
+/**
+ * Clones / updates the SmartIR repo and returns one FetchResult per
+ * climate JSON file.  The git repo lives in a stable `repos/smartir`
+ * directory under the base cache dir (NOT date-prefixed) so it is
+ * reused across daily runs and only updated via `git pull`.
+ */
+export async function runSmartIRFetch(
+  opts: PipelineOptions = {}
+): Promise<FetchResult[]> {
+  const baseDir = opts.cacheDir ?? DEFAULT_CACHE_DIR;
+  await fs.mkdir(baseDir, { recursive: true });
+
+  if (opts.skipFetch) {
+    // When skipping fetch, re-read whatever the last clone has on disk.
+    return fetchSmartIR(baseDir, false);
+  }
+  return fetchSmartIR(baseDir, opts.verbose);
 }
 
 // ─── OEM static schemas ───────────────────────────────────────────────────
@@ -87,33 +109,36 @@ export interface FetchBatch {
   oemResults: FetchResult[];
   irdbResults: FetchResult[];
   flipperResults: FetchResult[];
+  smartirResults: FetchResult[];
 }
 
 export async function fetchAll(opts: PipelineOptions = {}): Promise<FetchBatch> {
   const sources = opts.sources;
   const verbose = opts.verbose ?? false;
 
-  const runOEM  = !sources || sources.some(s => isOEMSource(s));
-  const runIRDB = !sources || sources.includes('irdb');
-  const runFlipper = !sources || sources.includes('flipper');
+  const runOEM      = !sources || sources.some(s => isOEMSource(s));
+  const runIRDB     = !sources || sources.includes('irdb');
+  const runFlipper  = !sources || sources.includes('flipper');
+  const runSmartIR  = !sources || sources.includes('smartir');
 
   if (verbose) {
     console.log('[fetch] Starting fetch batch', {
-      oem: runOEM, irdb: runIRDB, flipper: runFlipper,
+      oem: runOEM, irdb: runIRDB, flipper: runFlipper, smartir: runSmartIR,
     });
   }
 
-  const [oemResults, irdbResults, flipperResults] = await Promise.all([
-    runOEM    ? Promise.resolve(runOEMFetch(sources)) : Promise.resolve([]),
-    runIRDB   ? runIRDBFetch(opts)                    : Promise.resolve([]),
-    runFlipper? runFlipperFetch(opts)                 : Promise.resolve([]),
+  const [oemResults, irdbResults, flipperResults, smartirResults] = await Promise.all([
+    runOEM     ? Promise.resolve(runOEMFetch(sources)) : Promise.resolve([]),
+    runIRDB    ? runIRDBFetch(opts)                    : Promise.resolve([]),
+    runFlipper ? runFlipperFetch(opts)                 : Promise.resolve([]),
+    runSmartIR ? runSmartIRFetch(opts)                 : Promise.resolve([]),
   ]);
 
   if (verbose) {
-    console.log(`[fetch] Done — OEM:${oemResults.length} IRDB:${irdbResults.length} Flipper:${flipperResults.length}`);
+    console.log(`[fetch] Done — OEM:${oemResults.length} IRDB:${irdbResults.length} Flipper:${flipperResults.length} SmartIR:${smartirResults.length}`);
   }
 
-  return { oemResults, irdbResults, flipperResults };
+  return { oemResults, irdbResults, flipperResults, smartirResults };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { memo } from 'react';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { ProtocolBadge } from './ProtocolBadge';
 import type { ConnectionProtocol, DeviceCategory } from '../types/navigation';
@@ -21,10 +21,10 @@ interface Props {
   onPress: () => void;
 }
 
-export function DeviceCard({ name, location, protocol, category = 'tv', onPress }: Props): React.ReactElement {
+export const DeviceCard = memo(function DeviceCard({ name, location, protocol, category = 'tv', onPress }: Props): React.ReactElement {
   const meta = CATEGORY_ICONS[category] ?? CATEGORY_ICONS.tv;
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
+    <Pressable style={styles.card} onPress={onPress}>
       <View style={[styles.iconWrap, { backgroundColor: meta.color + '18' }]}>
         <Ionicons name={meta.icon} size={22} color={meta.color} />
       </View>
@@ -34,9 +34,9 @@ export function DeviceCard({ name, location, protocol, category = 'tv', onPress 
       </View>
       <ProtocolBadge protocol={protocol} />
       <Ionicons name="chevron-forward" size={16} color="#3A4257" style={styles.chevron} />
-    </TouchableOpacity>
+    </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

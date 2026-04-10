@@ -293,18 +293,27 @@ export function normaliseIREntries(entries: IRRawEntry[]): NormalisedModelEntry[
       normaliseIRCommand(e)
     );
 
-    results.push({
-      source: first.source,
-      brand_slug: brand.slug,
-      brand_name: brand.name,
-      brand_country: brand.country,
-      model_number: modelNumber,
-      model_name: `${brand.name} ${modelNumber}`,
-      category,
-      protocols: ['ir'],
-      capabilities: inferIRCapabilities(commands.map(c => c.name)),
-      commands,
-    });
+    // When model_hint is a comma-separated list (e.g. SmartIR supportedModels),
+    // expand into one entry per individual model number so each is searchable.
+    const modelNumbers = modelNumber.includes(',')
+      ? modelNumber.split(',').map(s => s.trim()).filter(Boolean)
+      : [modelNumber];
+
+    const capabilities = inferIRCapabilities(commands.map(c => c.name));
+    for (const mn of modelNumbers) {
+      results.push({
+        source: first.source,
+        brand_slug: brand.slug,
+        brand_name: brand.name,
+        brand_country: brand.country,
+        model_number: mn,
+        model_name: `${brand.name} ${mn}`,
+        category,
+        protocols: ['ir'],
+        capabilities,
+        commands,
+      });
+    }
   }
   return results;
 }

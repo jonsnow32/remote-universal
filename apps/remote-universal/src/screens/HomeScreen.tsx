@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 import {
   View,
   Text,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   FlatList,
   StatusBar,
@@ -102,12 +103,13 @@ function getGreeting() {
 
 // ─── Subcomponents ───────────────────────────────────────────────────────────
 
-function DeviceRow({ device, onPress }: { device: StoredDevice; onPress: () => void }) {
+const DeviceRow = memo(function DeviceRow({ device, onPress }: { device: StoredDevice; onPress: (device: StoredDevice) => void }) {
   const meta = CATEGORY_META[device.category];
   const isActive = device.is_online;
+  const handlePress = useCallback(() => onPress(device), [onPress, device]);
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
+    <Pressable style={styles.card} onPress={handlePress}>
       <View style={[styles.cardAccent, { backgroundColor: meta.color }]} />
       <View style={[styles.cardIcon, { backgroundColor: meta.color + '22' }]}>
         <Ionicons name={meta.icon} size={22} color={meta.color} />
@@ -122,9 +124,9 @@ function DeviceRow({ device, onPress }: { device: StoredDevice; onPress: () => v
           {isActive ? 'Online' : 'Offline'}
         </Text>
       </View>
-    </TouchableOpacity>
+    </Pressable>
   );
-}
+});
 
 function EmptyState({ onAdd }: { onAdd: () => void }) {
   const pulse = useRef(new Animated.Value(1)).current;
@@ -254,10 +256,14 @@ function AddDeviceModal({
             <Text style={styles.brandsLoadingText}>Loading brands…</Text>
           </View>
         ) : (
-          <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-            {filteredDbBrands.map(brand => (
+          <FlatList
+            data={filteredDbBrands}
+            keyExtractor={brand => brand.id}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            style={{ flex: 1 }}
+            renderItem={({ item: brand }) => (
               <TouchableOpacity
-                key={brand.id}
                 style={[styles.brandRow, w.brand === brand.name && styles.brandRowSelected]}
                 onPress={() => selectBrand(brand.name, brand.slug)}
                 activeOpacity={0.7}
@@ -276,28 +282,32 @@ function AddDeviceModal({
                 </View>
                 {w.brand === brand.name && <Ionicons name="checkmark" size={18} color="#6C63FF" />}
               </TouchableOpacity>
-            ))}
-            {showOther && (
-              <TouchableOpacity
-                style={[styles.brandRow, w.brand === 'Other' && styles.brandRowSelected]}
-                onPress={() => selectBrand('Other', null)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.brandRowLeft}>
-                  <View style={styles.brandLogoFallback}>
-                    <Ionicons name="ellipsis-horizontal" size={14} color="#8892A4" />
-                  </View>
-                  <Text style={[styles.brandRowText, w.brand === 'Other' && styles.brandRowTextSelected]}>
-                    Other
-                  </Text>
-                </View>
-                {w.brand === 'Other' && <Ionicons name="checkmark" size={18} color="#6C63FF" />}
-              </TouchableOpacity>
             )}
-            {q.length > 0 && filteredDbBrands.length === 0 && !showOther && (
-              <Text style={styles.brandsEmptyText}>No brands match "{w.brandSearch}"</Text>
+            ListFooterComponent={() => (
+              <>
+                {showOther && (
+                  <TouchableOpacity
+                    style={[styles.brandRow, w.brand === 'Other' && styles.brandRowSelected]}
+                    onPress={() => selectBrand('Other', null)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.brandRowLeft}>
+                      <View style={styles.brandLogoFallback}>
+                        <Ionicons name="ellipsis-horizontal" size={14} color="#8892A4" />
+                      </View>
+                      <Text style={[styles.brandRowText, w.brand === 'Other' && styles.brandRowTextSelected]}>
+                        Other
+                      </Text>
+                    </View>
+                    {w.brand === 'Other' && <Ionicons name="checkmark" size={18} color="#6C63FF" />}
+                  </TouchableOpacity>
+                )}
+                {q.length > 0 && filteredDbBrands.length === 0 && !showOther && (
+                  <Text style={styles.brandsEmptyText}>No brands match "{w.brandSearch}"</Text>
+                )}
+              </>
             )}
-          </ScrollView>
+          />
         )}
         <TouchableOpacity
           style={[styles.wizardPrimaryBtn, !w.brand && styles.wizardBtnDisabled]}
@@ -603,7 +613,7 @@ export function HomeScreen(): React.ReactElement {
           data={devices}
           keyExtractor={item => item.id}
           renderItem={({ item }) => (
-            <DeviceRow device={item} onPress={() => handleDevicePress(item)} />
+            <DeviceRow device={item} onPress={handleDevicePress} />
           )}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}

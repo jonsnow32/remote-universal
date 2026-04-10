@@ -189,10 +189,32 @@ export async function fetchIRCodesets(
 
   if (!model) return codesets;
 
-  return codesets
-    .map(cs => ({ ...cs, _score: scoreModelPattern(model, cs.model_pattern) }))
+  const scored = codesets.map(cs => {
+    const score = scoreModelPattern(model, cs.model_pattern);
+    console.log(
+      `[IRLocalDb] fetchIRCodesets score  model=${model}  pattern=${cs.model_pattern ?? 'null'}  id=${cs.id}  score=${score}`,
+    );
+    return { ...cs, _score: score };
+  });
+
+  const matched = scored
     .filter(cs => (cs._score ?? -1) >= 0)
     .sort((a, b) => (b._score ?? 0) - (a._score ?? 0));
+
+  console.log(
+    `[IRLocalDb] fetchIRCodesets  brand=${brand}  category=${category}  model=${model}  total=${codesets.length}  matched=${matched.length}`,
+  );
+
+  // If no codeset passes the model-pattern filter, fall back to all codesets for this
+  // brand so the IR setup flow can still present them for trial (sorted by match_confidence).
+  if (matched.length === 0) {
+    console.warn(
+      `[IRLocalDb] fetchIRCodesets: no model-pattern match for "${model}" — falling back to all ${codesets.length} codesets`,
+    );
+    return codesets; // already ordered by match_confidence DESC
+  }
+
+  return matched;
 }
 
 export async function fetchIRCodes(codesetId: string): Promise<IRCodeEntry[]> {

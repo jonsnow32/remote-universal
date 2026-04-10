@@ -20,6 +20,7 @@ import type { ConnectParams } from '../hooks/useConnection';
 import { useIRResolver } from '../hooks/useIRResolver';
 import { ProtocolBadge } from '../components/ProtocolBadge';
 import { VoiceCommandModal } from '../components/VoiceCommandModal';
+import { useIRDatabase } from '../lib/irDatabase';
 
 // ─── Layout helpers ──────────────────────────────────────────────────────────
 
@@ -52,6 +53,14 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
     model,
     codesetId,
   });
+
+  // Pre-warm the local IR DB when this screen is for an IR device.
+  // Fire-and-forget — subsequent button presses will use local DB once ready.
+  const { triggerLoad: triggerIRLoad } = useIRDatabase();
+  useEffect(() => {
+    if (protocol === 'ir') void triggerIRLoad();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [protocol]);
 
   // Connection runs in background — remote is shown immediately
   const [connStatus, setConnStatus] = useState<ConnStatus>('connecting');
@@ -89,7 +98,7 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
   // Android TV / Samsung pairing state
   const brandLower = (brand ?? '').toLowerCase();
   const isSamsungTV = brandLower === 'samsung' && (deviceType === 'tv' || deviceType === 'stb');
-  const isAndroidTV = !isSamsungTV && (
+  const isAndroidTV = Platform.OS === 'android' && !isSamsungTV && (
     deviceType === 'stb' ||
     brandLower.includes('android') ||
     brandLower === 'google' ||

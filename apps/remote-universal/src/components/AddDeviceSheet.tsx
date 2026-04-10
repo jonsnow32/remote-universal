@@ -20,6 +20,7 @@ import type { ConnectionProtocol, DeviceCategory } from '../types/navigation';
 import { BLEModule, IRModule } from '@remote/native-modules';
 import { fetchIRCodesets, resolveIRCommand } from '../lib/irApi';
 import type { IRCodeset } from '../lib/irApi';
+import { useIRDatabase } from '../lib/irDatabase';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -151,6 +152,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
   const { data: models, isLoading: modelsLoading } = useModelsByBrand(selectedBrandSlug);
   const isSearching = searchQuery.trim().length >= 2;
   const { data: searchedModels, isLoading: searchModelsLoading } = useSearchModels(searchQuery);
+  const { triggerLoad: triggerIRLoad } = useIRDatabase();
 
   useEffect(() => {
     if (visible) {
@@ -296,6 +298,10 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
     setIRTestPayload(null);
     setIRTestCommand('POWER');
     irSelectedCodesetId.current = null;
+
+    // Ensure local IR DB is open before querying — this is a no-op if already ready.
+    // We await so fetchIRCodesets below uses the local DB, not the HTTP fallback.
+    await triggerIRLoad();
 
     // Check IR blaster availability
     const available = await IRModule.isAvailable();
@@ -732,7 +738,12 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
               <ProtocolPicker
                 selected={selectedProtocol}
                 recommended={selectedModelProtocols[0] ?? 'wifi'}
-                onSelect={setSelectedProtocol}
+                onSelect={(p) => {
+                  setSelectedProtocol(p);
+                  // Pre-warm the IR database as soon as the user taps IR,
+                  // so it has maximum time to load before they press Next.
+                  if (p === 'ir') void triggerIRLoad();
+                }}
                 deviceProtocols={selectedModelProtocols.length > 0 ? selectedModelProtocols : undefined}
               />
 

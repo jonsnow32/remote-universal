@@ -58,8 +58,8 @@ export class MDNSDiscovery {
       try {
         const devices = await this.scanServiceType(type, protocol, deviceType, perTypeBudget);
         for (const device of devices) {
-          if (!seen.has(device.id)) {
-            seen.add(device.id);
+          if (!seen.has(device.address)) {
+            seen.add(device.address);
             all.push(device);
           }
         }

@@ -1,4 +1,13 @@
 import { getCatalogClient } from './supabase';
+import {
+  isCatalogLocalDbReady,
+  localFetchAllBrands,
+  localFetchBrandsByCategory,
+  localFetchModelsByBrand,
+  localSearchModels,
+  upsertBrands,
+  upsertModels,
+} from './catalogLocalDb';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,10 +27,18 @@ export interface CatalogModel {
   category: string | null;
 }
 
-// ─── Query Functions ──────────────────────────────────────────────────────────
+/** Safely coerce protocols from any storage format to string[]. */
+function parseProtocols(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw as string[];
+  if (typeof raw === 'string') {
+    try { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) return parsed; } catch {}
+  }
+  return [];
+}
 
-/** Fetch all brands sorted alphabetically by name. */
-export async function fetchAllBrands(): Promise<CatalogBrand[]> {
+// ─── Remote (Supabase) fetchers ──────────────────────────────────────────────
+
+async function remoteFetchAllBrands(): Promise<CatalogBrand[]> {
   const { data, error } = await getCatalogClient()
     .from('brands')
     .select('id, name, slug, logo_uri')
@@ -30,12 +47,7 @@ export async function fetchAllBrands(): Promise<CatalogBrand[]> {
   return (data ?? []) as CatalogBrand[];
 }
 
-/**
- * Fetch distinct brands that have at least one model in the given category.
- * Returns brands sorted alphabetically by name.
- */
-export async function fetchBrandsByCategory(category: string): Promise<CatalogBrand[]> {
-  // Step 1: get distinct brand_ids for this category
+async function remoteFetchBrandsByCategory(category: string): Promise<CatalogBrand[]> {
   const { data: modelRows, error: e1 } = await getCatalogClient()
     .from('device_models')
     .select('brand_id')
@@ -46,7 +58,6 @@ export async function fetchBrandsByCategory(category: string): Promise<CatalogBr
   const brandIds = [...new Set((modelRows ?? []).map((r: { brand_id: string }) => r.brand_id))];
   if (brandIds.length === 0) return [];
 
-  // Step 2: fetch brand details
   const { data: brands, error: e2 } = await getCatalogClient()
     .from('brands')
     .select('id, name, slug, logo_uri')
@@ -57,11 +68,7 @@ export async function fetchBrandsByCategory(category: string): Promise<CatalogBr
   return (brands ?? []) as CatalogBrand[];
 }
 
-/**
- * Fetch device models for a given brand slug, optionally filtered by category.
- * Returns models sorted by model_number.
- */
-export async function fetchModelsByBrand(
+async function remoteFetchModelsByBrand(
   brandSlug: string,
   category?: string,
 ): Promise<CatalogModel[]> {
@@ -84,15 +91,11 @@ export async function fetchModelsByBrand(
     model_number: row.model_number as string,
     model_name: (row.model_name ?? null) as string | null,
     category: (row.category ?? null) as string | null,
-    protocols: Array.isArray(row.protocols) ? (row.protocols as string[]) : [],
+    protocols: parseProtocols(row.protocols),
   }));
 }
 
-/**
- * Full-text search across all device models (model_number + model_name).
- * Returns up to 25 results ordered by model_number.
- */
-export async function searchModels(query: string): Promise<CatalogModel[]> {
+async function remoteSearchModels(query: string): Promise<CatalogModel[]> {
   const { data, error } = await getCatalogClient()
     .from('device_models')
     .select('id, brand_id, model_number, model_name, protocols, category')
@@ -106,6 +109,79 @@ export async function searchModels(query: string): Promise<CatalogModel[]> {
     model_number: row.model_number as string,
     model_name: (row.model_name ?? null) as string | null,
     category: (row.category ?? null) as string | null,
-    protocols: Array.isArray(row.protocols) ? (row.protocols as string[]) : [],
+    protocols: parseProtocols(row.protocols),
   }));
+}
+
+// ─── Local-first public API ──────────────────────────────────────────────────
+//
+// Strategy for every query:
+//   1. If local DB is ready → query locally
+//   2. If local returns results → return them immediately
+//      AND fire a background Supabase refresh (stale-while-revalidate)
+//   3. If local returns empty → fallback to Supabase → persist → return
+//   4. If local DB is NOT ready → go straight to Supabase
+//
+
+/** Fetch all brands — local first, remote fallback + sync. */
+export async function fetchAllBrands(): Promise<CatalogBrand[]> {
+  if (isCatalogLocalDbReady()) {
+    const local = localFetchAllBrands();
+    if (local.length > 0) {
+      // Background refresh: fetch from Supabase and update local cache
+      remoteFetchAllBrands().then(remote => upsertBrands(remote)).catch(() => {});
+      return local;
+    }
+  }
+  // Fallback to Supabase
+  const remote = await remoteFetchAllBrands();
+  if (isCatalogLocalDbReady()) upsertBrands(remote);
+  return remote;
+}
+
+/** Fetch brands by category — local first, remote fallback + sync. */
+export async function fetchBrandsByCategory(category: string): Promise<CatalogBrand[]> {
+  if (isCatalogLocalDbReady()) {
+    const local = localFetchBrandsByCategory(category);
+    if (local.length > 0) {
+      remoteFetchBrandsByCategory(category).then(remote => upsertBrands(remote)).catch(() => {});
+      return local;
+    }
+  }
+  const remote = await remoteFetchBrandsByCategory(category);
+  if (isCatalogLocalDbReady()) upsertBrands(remote);
+  return remote;
+}
+
+/** Fetch models by brand — local first, remote fallback + sync. */
+export async function fetchModelsByBrand(
+  brandSlug: string,
+  category?: string,
+): Promise<CatalogModel[]> {
+  if (isCatalogLocalDbReady()) {
+    const local = localFetchModelsByBrand(brandSlug, category);
+    if (local.length > 0) {
+      remoteFetchModelsByBrand(brandSlug, category)
+        .then(remote => upsertModels(remote))
+        .catch(() => {});
+      return local;
+    }
+  }
+  const remote = await remoteFetchModelsByBrand(brandSlug, category);
+  if (isCatalogLocalDbReady()) upsertModels(remote);
+  return remote;
+}
+
+/** Search models — local first, remote fallback + sync. */
+export async function searchModels(query: string): Promise<CatalogModel[]> {
+  if (isCatalogLocalDbReady()) {
+    const local = localSearchModels(query);
+    if (local.length > 0) {
+      remoteSearchModels(query).then(remote => upsertModels(remote)).catch(() => {});
+      return local;
+    }
+  }
+  const remote = await remoteSearchModels(query);
+  if (isCatalogLocalDbReady()) upsertModels(remote);
+  return remote;
 }

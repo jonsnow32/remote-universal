@@ -68,6 +68,7 @@ export function useDiscovery() {
     if (scanRef.current) return;
     scanRef.current = true;
     setStatus('scanning');
+    setDevices([]);
 
     try {
       await discovery.discoverStream(
@@ -82,9 +83,9 @@ export function useDiscovery() {
             layoutId: inferLayoutId(device),
           };
           setDevices(prev => {
-            const idx = prev.findIndex(d => d.raw.id === device.id);
+            const idx = prev.findIndex(d => d.raw.address === device.address);
             if (idx >= 0) {
-              // Update existing entry (address/name may have changed)
+              // Update existing entry (merged from another channel)
               const updated = [...prev];
               updated[idx] = info;
               return updated;

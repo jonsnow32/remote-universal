@@ -7,6 +7,7 @@ import { ThemeProvider } from '@remote/ui-kit';
 import { setDynamicLoadingEnabled } from '@react-native-vector-icons/common';
 import { theme } from './theme';
 import { IRDatabaseProvider } from './lib/irDatabase';
+import { CatalogDatabaseProvider } from './lib/catalogDatabase';
 
 // Disable dynamic (expo-font JS) loading — use native assets/fonts/ instead
 setDynamicLoadingEnabled(false);
@@ -38,26 +39,28 @@ const queryClient = new QueryClient();
 export default function App(): React.ReactElement {
   return (
     <SafeAreaProvider>
-      <IRDatabaseProvider>
-        <QueryClientProvider client={queryClient}>
-          <ThemeProvider theme={theme}>
-            <NavigationContainer theme={navTheme}>
-              <Stack.Navigator
-                initialRouteName="Discovery"
-                screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
-              >
-                <Stack.Screen name="Discovery" component={DiscoveryScreen} />
-                <Stack.Screen name="Remote" component={RemoteScreen} />
-                <Stack.Screen
-                  name="Settings"
-                  component={SettingsScreen}
-                  options={{ animation: 'slide_from_bottom', presentation: 'modal' }}
-                />
-              </Stack.Navigator>
-            </NavigationContainer>
-          </ThemeProvider>
-        </QueryClientProvider>
-      </IRDatabaseProvider>
+      <CatalogDatabaseProvider>
+        <IRDatabaseProvider>
+          <QueryClientProvider client={queryClient}>
+            <ThemeProvider theme={theme}>
+              <NavigationContainer theme={navTheme}>
+                <Stack.Navigator
+                  initialRouteName="Discovery"
+                  screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
+                >
+                  <Stack.Screen name="Discovery" component={DiscoveryScreen} />
+                  <Stack.Screen name="Remote" component={RemoteScreen} />
+                  <Stack.Screen
+                    name="Settings"
+                    component={SettingsScreen}
+                    options={{ animation: 'slide_from_bottom', presentation: 'modal' }}
+                  />
+                </Stack.Navigator>
+              </NavigationContainer>
+            </ThemeProvider>
+          </QueryClientProvider>
+        </IRDatabaseProvider>
+      </CatalogDatabaseProvider>
     </SafeAreaProvider>
   );
 }

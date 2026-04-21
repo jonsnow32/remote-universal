@@ -10,6 +10,8 @@ export interface DiscoveredDevice {
   address: string;
   name?: string;
   source: 'mdns' | 'ssdp' | 'ble' | 'hub';
+  /** All discovery sources that found this device. */
+  sources?: Array<'mdns' | 'ssdp' | 'ble' | 'hub'>;
   /** Device category inferred at discovery time from protocol metadata. */
   type?: DeviceType;
 }
@@ -67,13 +69,26 @@ export class DeviceDiscovery {
     timeoutMs = DEFAULT_TIMEOUT_MS
   ): Promise<DiscoveredDevice[]> {
     const all: DiscoveredDevice[] = [];
-    const seen = new Set<string>();
+    const byAddress = new Map<string, DiscoveredDevice>();
 
     const emitIfNew = (device: DiscoveredDevice): void => {
-      if (!seen.has(device.id)) {
-        seen.add(device.id);
-        all.push(device);
-        onDeviceFound(device);
+      const existing = byAddress.get(device.address);
+      if (!existing) {
+        const merged = { ...device, sources: [device.source] };
+        byAddress.set(device.address, merged);
+        all.push(merged);
+        onDeviceFound(merged);
+      } else {
+        // Merge info from additional channel into existing entry
+        if (!existing.sources!.includes(device.source)) {
+          existing.sources!.push(device.source);
+        }
+        if (device.name && (!existing.name || existing.name === existing.id)) {
+          existing.name = device.name;
+        }
+        if (device.type && !existing.type) {
+          existing.type = device.type;
+        }
       }
     };
 
@@ -99,12 +114,33 @@ export class DeviceDiscovery {
     return all;
   }
 
+  /**
+   * Merges devices by address so the same physical device discovered via
+   * multiple channels (mDNS, SSDP, BLE, hub) appears only once.
+   * Prefers the entry with a name over anonymous ones.
+   */
   private deduplicate(devices: DiscoveredDevice[]): DiscoveredDevice[] {
-    const seen = new Set<string>();
-    return devices.filter(d => {
-      if (seen.has(d.id)) return false;
-      seen.add(d.id);
-      return true;
-    });
+    const byAddress = new Map<string, DiscoveredDevice>();
+    for (const d of devices) {
+      const key = d.address;
+      const existing = byAddress.get(key);
+      if (!existing) {
+        byAddress.set(key, { ...d, sources: [d.source] });
+      } else {
+        // Accumulate sources
+        if (!existing.sources!.includes(d.source)) {
+          existing.sources!.push(d.source);
+        }
+        // Prefer a real name over a generic/missing one
+        if (d.name && (!existing.name || existing.name === existing.id)) {
+          existing.name = d.name;
+        }
+        // Prefer a more specific type (non-undefined)
+        if (d.type && !existing.type) {
+          existing.type = d.type;
+        }
+      }
+    }
+    return Array.from(byAddress.values());
   }
 }

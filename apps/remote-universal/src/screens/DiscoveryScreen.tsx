@@ -182,7 +182,7 @@ export function DiscoveryScreen(): React.ReactElement {
       {/* Device List */}
       <FlatList
         data={devices}
-        keyExtractor={item => item.raw.id}
+        keyExtractor={item => item.raw.address}
         renderItem={renderDevice}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}

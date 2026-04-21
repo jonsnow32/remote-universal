@@ -527,12 +527,12 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
 
   const addrCfg = ADDRESS_CONFIG[selectedProtocol];
   const addressIsValid = address.trim().length > 0;
-
+  
   const canGoBack = step !== 'search' && step !== 'connecting' && step !== 'ir_setup';
 
   const headerTitle: Record<Step, string> = {
     search:     'Add Device',
-    models:     `${selectedBrand} · ${selectedCategory?.toUpperCase() ?? 'TV'}`,
+    models:     `${selectedBrand} · ${selectedCategory?.toUpperCase() ?? 'All'}`,
     protocol:   `${selectedBrand} ${selectedModel}`,
     ble_scan:   'Nearby Bluetooth Devices',
     address:    `${PROTOCOL_LABELS[selectedProtocol]} Setup`,

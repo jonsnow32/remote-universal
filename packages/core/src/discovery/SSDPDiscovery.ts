@@ -61,11 +61,11 @@ export class SSDPDiscovery {
       )
       .map(r => r.value as DiscoveredDevice);
 
-    // Deduplicate by id (a device might respond on both ports).
+    // Deduplicate by address (a device might respond on both Samsung and Cast ports).
     const seen = new Set<string>();
     return results.filter(d => {
-      if (seen.has(d.id)) return false;
-      seen.add(d.id);
+      if (seen.has(d.address)) return false;
+      seen.add(d.address);
       return true;
     });
   }

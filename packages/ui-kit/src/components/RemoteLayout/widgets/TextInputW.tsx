@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import type { TextInputWidget } from '@remote/core';
 import { Ionicons } from '@react-native-vector-icons/ionicons';
+import { useTheme } from '../../../theme/ThemeProvider';
 
 export interface TextInputWHandle {
   /** Open the modal pre-filled with [initialText] and optional [hint] (TV-driven open). */
@@ -26,6 +27,7 @@ export const TextInputW = forwardRef<TextInputWHandle, Props>(function TextInput
   { widget, onAction }: Props,
   ref,
 ) {
+  const theme = useTheme();
   const [visible, setVisible] = useState(false);
   const [text, setText] = useState('');
   const [tvHint, setTvHint] = useState('');
@@ -64,9 +66,9 @@ export const TextInputW = forwardRef<TextInputWHandle, Props>(function TextInput
         style={({ pressed }) => ({
           flex: 1,
           borderRadius: 12,
-          backgroundColor: '#0E1420',
+          backgroundColor: theme.colors.surface,
           borderWidth: 1,
-          borderColor: '#1A2030',
+          borderColor: theme.colors.border,
           alignItems: 'center',
           justifyContent: 'center',
           flexDirection: 'row',
@@ -77,9 +79,9 @@ export const TextInputW = forwardRef<TextInputWHandle, Props>(function TextInput
         <Ionicons
           name={(widget.icon ?? 'search-outline') as React.ComponentProps<typeof Ionicons>['name']}
           size={18}
-          color="#8892A4"
+          color={theme.colors.textSecondary}
         />
-        <Text style={{ color: '#555E74', fontSize: 13 }}>
+        <Text style={{ color: theme.colors.textSecondary, fontSize: 13, fontFamily: theme.typography.fontFamily }}>
           {widget.placeholder ?? 'Search…'}
         </Text>
       </Pressable>
@@ -105,7 +107,7 @@ export const TextInputW = forwardRef<TextInputWHandle, Props>(function TextInput
           <Pressable
             onPress={() => {/* stop propagation */}}
             style={{
-              backgroundColor: '#131929',
+              backgroundColor: theme.colors.background,
               borderTopLeftRadius: 20,
               borderTopRightRadius: 20,
               padding: 20,
@@ -114,8 +116,8 @@ export const TextInputW = forwardRef<TextInputWHandle, Props>(function TextInput
           >
               {/* ── Mirror hint ── */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#00C9A7' }} />
-                <Text style={{ color: '#00C9A7', fontSize: 12, fontWeight: '600' }}>
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: theme.colors.success }} />
+                <Text style={{ color: theme.colors.success, fontSize: 12, fontWeight: '600', fontFamily: theme.typography.fontFamily }}>
                   Mirroring to TV keyboard
                 </Text>
               </View>
@@ -124,10 +126,10 @@ export const TextInputW = forwardRef<TextInputWHandle, Props>(function TextInput
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  backgroundColor: '#0E1420',
+                  backgroundColor: theme.colors.surface,
                   borderRadius: 12,
                   borderWidth: 1,
-                  borderColor: '#2A3448',
+                  borderColor: theme.colors.border,
                   paddingHorizontal: 14,
                   gap: 10,
                 }}
@@ -135,7 +137,7 @@ export const TextInputW = forwardRef<TextInputWHandle, Props>(function TextInput
                 <Ionicons
                   name={(widget.icon ?? 'search-outline') as React.ComponentProps<typeof Ionicons>['name']}
                   size={18}
-                  color="#555E74"
+                  color={theme.colors.textSecondary}
                 />
                 <TextInput
                   ref={inputRef}
@@ -144,14 +146,14 @@ export const TextInputW = forwardRef<TextInputWHandle, Props>(function TextInput
                   onSubmitEditing={submit}
                   returnKeyType="search"
                   placeholder={tvHint || widget.placeholder || 'Type to search…'}
-                  placeholderTextColor="#3C4560"
-                  style={{ flex: 1, color: '#E2E8F7', fontSize: 15, paddingVertical: 12 }}
+                  placeholderTextColor={theme.colors.textSecondary}
+                  style={{ flex: 1, color: theme.colors.text, fontSize: 15, paddingVertical: 12, fontFamily: theme.typography.fontFamily }}
                   autoCorrect={false}
                   autoCapitalize="none"
                 />
                 {text.length > 0 && (
                   <Pressable onPress={() => handleChangeText('')}>
-                    <Ionicons name="close-circle" size={18} color="#555E74" />
+                    <Ionicons name="close-circle" size={18} color={theme.colors.textSecondary} />
                   </Pressable>
                 )}
               </View>
@@ -160,14 +162,14 @@ export const TextInputW = forwardRef<TextInputWHandle, Props>(function TextInput
                 onPress={submit}
                 style={({ pressed }) => ({
                   marginTop: 14,
-                  backgroundColor: '#4A6EE0',
+                  backgroundColor: theme.colors.primary,
                   borderRadius: 12,
                   paddingVertical: 13,
                   alignItems: 'center',
                   opacity: pressed ? 0.75 : 1,
                 })}
               >
-                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Search on TV</Text>
+                <Text style={{ color: '#FFFFFF', fontWeight: '600', fontSize: 15, fontFamily: theme.typography.fontFamilyBold }}>Search on TV</Text>
               </Pressable>
           </Pressable>
         </KeyboardAvoidingView>

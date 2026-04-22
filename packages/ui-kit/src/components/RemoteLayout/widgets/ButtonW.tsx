@@ -20,10 +20,11 @@ function haptic() {
 export function ButtonW({ widget, onAction }: Props) {
   const theme = useTheme();
   const scale = useRef(new Animated.Value(1)).current;
+  const isFilled = widget.variant === 'primary' || widget.variant === 'danger';
 
   const bgColor =
     widget.variant === 'primary' ? theme.colors.primary
-    : widget.variant === 'danger' ? '#FF4F4F'
+    : widget.variant === 'danger' ? theme.colors.error
     : 'transparent';
 
   const hasBorder = !widget.variant || widget.variant === 'ghost';
@@ -57,16 +58,16 @@ export function ButtonW({ widget, onAction }: Props) {
             <Ionicons
               name={widget.icon as React.ComponentProps<typeof Ionicons>['name']}
               size={18}
-              color={theme.colors.text}
+              color={isFilled ? '#FFFFFF' : theme.colors.text}
             />
-            <Text style={{ color: theme.colors.textSecondary, fontSize: 10, textAlign: 'center' }}>
+            <Text style={{ color: isFilled ? '#FFFFFF' : theme.colors.textSecondary, fontSize: 10, textAlign: 'center' }}>
               {widget.label}
             </Text>
           </>
         ) : (
           <Text
             style={{
-              color: theme.colors.text,
+              color: isFilled ? '#FFFFFF' : theme.colors.text,
               fontSize: 13,
               fontWeight: '600',
               textAlign: 'center',

@@ -27,7 +27,7 @@ function haptic() {
  */
 export function VoiceW({ widget, onAction }: Props): React.ReactElement {
   const theme = useTheme();
-  const accentColor = widget.accentColor ?? '#E53E3E'; // mic is typically red
+  const accentColor = widget.accentColor ?? theme.colors.error;
 
   const scale = useRef(new Animated.Value(1)).current;
   const ringOpacity = useRef(new Animated.Value(0)).current;

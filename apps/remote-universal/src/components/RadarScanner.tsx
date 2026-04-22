@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Animated, StyleSheet } from 'react-native';
+import { useTheme } from '@remote/ui-kit';
 
 interface Props {
   scanning: boolean;
@@ -9,6 +10,7 @@ interface Props {
 const RING_COUNT = 3;
 
 export function RadarScanner({ scanning, deviceCount }: Props): React.ReactElement {
+  const theme = useTheme();
   const rings = useRef(
     Array.from({ length: RING_COUNT }, () => new Animated.Value(0))
   ).current;
@@ -53,16 +55,16 @@ export function RadarScanner({ scanning, deviceCount }: Props): React.ReactEleme
     <View style={styles.container}>
       {/* Pulse rings */}
       {rings.map((r, i) => (
-        <Animated.View key={i} style={[styles.ring, ringStyle(r)]} />
+        <Animated.View key={i} style={[styles.ring, { borderColor: theme.colors.primary }, ringStyle(r)]} />
       ))}
 
       {/* Static orbit guides */}
-      <View style={[styles.orbitRing, { width: 120, height: 120, borderRadius: 60 }]} />
-      <View style={[styles.orbitRing, { width: 180, height: 180, borderRadius: 90 }]} />
+      <View style={[styles.orbitRing, { width: 120, height: 120, borderRadius: 60, borderColor: theme.colors.border }]} />
+      <View style={[styles.orbitRing, { width: 180, height: 180, borderRadius: 90, borderColor: theme.colors.border }]} />
 
       {/* Center scanner icon */}
-      <View style={styles.center}>
-        <View style={[styles.centerDot, scanning && styles.centerDotActive]} />
+      <View style={[styles.center, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}> 
+        <View style={[styles.centerDot, { backgroundColor: theme.colors.textSecondary }, scanning && [styles.centerDotActive, { backgroundColor: theme.colors.primary, shadowColor: theme.colors.primary }]]} />
       </View>
 
       {/* Device dots */}

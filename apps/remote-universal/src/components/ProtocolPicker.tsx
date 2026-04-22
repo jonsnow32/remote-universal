@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import type { ConnectionProtocol } from '../types/navigation';
+import { useTheme } from '@remote/ui-kit';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -41,9 +42,10 @@ function resolveDescription(proto: ProtocolOption, deviceProtocols?: ConnectionP
 }
 
 export function ProtocolPicker({ selected, recommended = 'wifi', onSelect, deviceProtocols }: Props): React.ReactElement {
+  const theme = useTheme();
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Choose connection method</Text>
+      <Text style={[styles.title, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamilyBold }]}>Choose connection method</Text>
       {ALL_PROTOCOLS.map((proto) => {
         const isSelected = selected === proto.id;
         const isRecommended = proto.id === recommended;
@@ -54,6 +56,7 @@ export function ProtocolPicker({ selected, recommended = 'wifi', onSelect, devic
             key={proto.id}
             style={[
               styles.option,
+              { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
               isSelected && { borderColor: proto.color },
               dimmed && styles.optionDimmed,
             ]}
@@ -65,14 +68,14 @@ export function ProtocolPicker({ selected, recommended = 'wifi', onSelect, devic
             </View>
             <View style={styles.content}>
               <View style={styles.titleRow}>
-                <Text style={[styles.optionLabel, dimmed && styles.optionLabelDimmed]}>{proto.label}</Text>
+                <Text style={[styles.optionLabel, { color: theme.colors.text, fontFamily: theme.typography.fontFamilyBold }, dimmed && styles.optionLabelDimmed]}>{proto.label}</Text>
                 {isRecommended && (
                   <View style={styles.recommendBadge}>
                     <Text style={styles.recommendText}>Recommended</Text>
                   </View>
                 )}
               </View>
-              <Text style={[styles.description, supported === true && styles.descriptionSupported]}>
+              <Text style={[styles.description, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamily }, supported === true && styles.descriptionSupported]}>
                 {descText}
               </Text>
             </View>

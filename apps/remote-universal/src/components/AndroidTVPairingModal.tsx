@@ -15,6 +15,7 @@ import {
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AndroidTV } from '@remote/device-sdk';
+import { useTheme } from '@remote/ui-kit';
 
 /** Returns true when the AndroidTV native module is linked. */
 function isAndroidTVAvailable(): boolean {
@@ -47,6 +48,7 @@ export function AndroidTVPairingModal({
   onCancel,
 }: Props): React.ReactElement {
   const insets = useSafeAreaInsets();
+  const theme = useTheme();
   const [step, setStep] = useState<Step>('idle');
   const [pin, setPin] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -118,15 +120,15 @@ export function AndroidTVPairingModal({
         return (
           <>
             <View style={styles.iconWrap}>
-              <Ionicons name="phone-portrait-outline" size={48} color="#FFB347" />
+              <Ionicons name="phone-portrait-outline" size={48} color={theme.colors.warning} />
             </View>
-            <Text style={styles.title}>Not available</Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.title, { color: theme.colors.text, fontFamily: theme.typography.fontFamilyBold }]}>Not available</Text>
+            <Text style={[styles.subtitle, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamily }]}>
               Android TV pairing requires a physical device.{`\n`}
               This feature is not available in the simulator or Expo Go.
             </Text>
-            <TouchableOpacity style={styles.primaryBtn} onPress={handleCancel} activeOpacity={0.85}>
-              <Text style={styles.primaryBtnText}>Close</Text>
+            <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: theme.colors.primary }]} onPress={handleCancel} activeOpacity={0.85}>
+              <Text style={[styles.primaryBtnText, { fontFamily: theme.typography.fontFamilyBold }]}>Close</Text>
             </TouchableOpacity>
           </>
         );
@@ -135,15 +137,15 @@ export function AndroidTVPairingModal({
         return (
           <>
             <View style={styles.iconWrap}>
-              <Ionicons name="tv-outline" size={48} color="#6C63FF" />
+              <Ionicons name="tv-outline" size={48} color={theme.colors.primary} />
             </View>
-            <Text style={styles.title}>Pair with {deviceName}</Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.title, { color: theme.colors.text, fontFamily: theme.typography.fontFamilyBold }]}>Pair with {deviceName}</Text>
+            <Text style={[styles.subtitle, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamily }]}>
               A 6-digit code will appear on your TV screen.{'\n'}
               Make sure your TV is on and connected to the same Wi-Fi.
             </Text>
-            <TouchableOpacity style={styles.primaryBtn} onPress={() => { void handleStartPairing(); }} activeOpacity={0.85}>
-              <Text style={styles.primaryBtnText}>Start Pairing</Text>
+            <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: theme.colors.primary }]} onPress={() => { void handleStartPairing(); }} activeOpacity={0.85}>
+              <Text style={[styles.primaryBtnText, { fontFamily: theme.typography.fontFamilyBold }]}>Start Pairing</Text>
             </TouchableOpacity>
           </>
         );
@@ -151,9 +153,9 @@ export function AndroidTVPairingModal({
       case 'starting':
         return (
           <>
-            <ActivityIndicator size="large" color="#6C63FF" style={{ marginBottom: 20 }} />
-            <Text style={styles.title}>Connecting to TV…</Text>
-            <Text style={styles.subtitle}>Please wait while we contact your TV.</Text>
+            <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginBottom: 20 }} />
+            <Text style={[styles.title, { color: theme.colors.text, fontFamily: theme.typography.fontFamilyBold }]}>Connecting to TV…</Text>
+            <Text style={[styles.subtitle, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamily }]}>Please wait while we contact your TV.</Text>
           </>
         );
 
@@ -161,33 +163,33 @@ export function AndroidTVPairingModal({
         return (
           <>
             <View style={styles.iconWrap}>
-              <Ionicons name="keypad-outline" size={48} color="#00C9A7" />
+              <Ionicons name="keypad-outline" size={48} color={theme.colors.success} />
             </View>
-            <Text style={styles.title}>Enter the code</Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.title, { color: theme.colors.text, fontFamily: theme.typography.fontFamilyBold }]}>Enter the code</Text>
+            <Text style={[styles.subtitle, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamily }]}>
               A 6-digit code is showing on your TV.{'\n'}Type it below.
             </Text>
             <TextInput
               ref={pinInputRef}
-              style={styles.pinInput}
+              style={[styles.pinInput, { backgroundColor: theme.colors.surface, color: theme.colors.text, borderColor: theme.colors.border, fontFamily: theme.typography.fontFamilyBold }]}
               value={pin}
               onChangeText={handlePinChange}
               autoCapitalize="characters"
               autoCorrect={false}
               maxLength={6}
               placeholder="0A1B2C"
-              placeholderTextColor="#3A4255"
+              placeholderTextColor={theme.colors.textSecondary}
               textAlign="center"
               returnKeyType="done"
               onSubmitEditing={() => { void handleConfirmPin(); }}
             />
             <TouchableOpacity
-              style={[styles.primaryBtn, pin.length !== 6 && styles.primaryBtnDisabled]}
+              style={[styles.primaryBtn, { backgroundColor: theme.colors.primary }, pin.length !== 6 && styles.primaryBtnDisabled]}
               onPress={() => { void handleConfirmPin(); }}
               disabled={pin.length !== 6}
               activeOpacity={0.85}
             >
-              <Text style={styles.primaryBtnText}>Confirm</Text>
+              <Text style={[styles.primaryBtnText, { fontFamily: theme.typography.fontFamilyBold }]}>Confirm</Text>
             </TouchableOpacity>
           </>
         );
@@ -195,9 +197,9 @@ export function AndroidTVPairingModal({
       case 'confirming':
         return (
           <>
-            <ActivityIndicator size="large" color="#6C63FF" style={{ marginBottom: 20 }} />
-            <Text style={styles.title}>Verifying…</Text>
-            <Text style={styles.subtitle}>Confirming the code with your TV.</Text>
+            <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginBottom: 20 }} />
+            <Text style={[styles.title, { color: theme.colors.text, fontFamily: theme.typography.fontFamilyBold }]}>Verifying…</Text>
+            <Text style={[styles.subtitle, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamily }]}>Confirming the code with your TV.</Text>
           </>
         );
 
@@ -205,10 +207,10 @@ export function AndroidTVPairingModal({
         return (
           <>
             <View style={styles.iconWrap}>
-              <Ionicons name="checkmark-circle" size={56} color="#00C9A7" />
+              <Ionicons name="checkmark-circle" size={56} color={theme.colors.success} />
             </View>
-            <Text style={styles.title}>Paired!</Text>
-            <Text style={styles.subtitle}>{deviceName} is ready to control.</Text>
+            <Text style={[styles.title, { color: theme.colors.text, fontFamily: theme.typography.fontFamilyBold }]}>Paired!</Text>
+            <Text style={[styles.subtitle, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamily }]}>{deviceName} is ready to control.</Text>
           </>
         );
 
@@ -216,12 +218,12 @@ export function AndroidTVPairingModal({
         return (
           <>
             <View style={styles.iconWrap}>
-              <Ionicons name="warning-outline" size={48} color="#FF4F4F" />
+              <Ionicons name="warning-outline" size={48} color={theme.colors.error} />
             </View>
-            <Text style={styles.title}>Pairing failed</Text>
-            <Text style={[styles.subtitle, styles.errorText]}>{errorMessage}</Text>
-            <TouchableOpacity style={styles.primaryBtn} onPress={handleRetry} activeOpacity={0.85}>
-              <Text style={styles.primaryBtnText}>Try Again</Text>
+            <Text style={[styles.title, { color: theme.colors.text, fontFamily: theme.typography.fontFamilyBold }]}>Pairing failed</Text>
+            <Text style={[styles.subtitle, styles.errorText, { fontFamily: theme.typography.fontFamily }]}>{errorMessage}</Text>
+            <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: theme.colors.primary }]} onPress={handleRetry} activeOpacity={0.85}>
+              <Text style={[styles.primaryBtnText, { fontFamily: theme.typography.fontFamilyBold }]}>Try Again</Text>
             </TouchableOpacity>
           </>
         );
@@ -247,14 +249,14 @@ export function AndroidTVPairingModal({
           bounces={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={[styles.sheet, { paddingBottom: insets.bottom + 24 }]}>
+          <View style={[styles.sheet, { backgroundColor: theme.colors.background, paddingBottom: insets.bottom + 24 }]}> 
             {/* Drag handle */}
-            <View style={styles.handle} />
+            <View style={[styles.handle, { backgroundColor: theme.colors.border }]} />
 
             {/* Close button */}
             {!isBusy && (
               <TouchableOpacity style={styles.closeBtn} onPress={handleCancel} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                <Ionicons name="close" size={22} color="#8892A4" />
+                <Ionicons name="close" size={22} color={theme.colors.textSecondary} />
               </TouchableOpacity>
             )}
 

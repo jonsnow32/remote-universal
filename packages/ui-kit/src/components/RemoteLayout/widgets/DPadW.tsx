@@ -3,6 +3,7 @@ import { View, Text, PanResponder, Animated, LayoutChangeEvent, StyleSheet } fro
 import type { DPadWidget } from '@remote/core';
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import type * as HapticsType from 'expo-haptics';
+import { useTheme } from '../../../theme/ThemeProvider';
 
 interface Props {
   widget: DPadWidget;
@@ -31,12 +32,8 @@ function haptic(medium = false) {
   } catch (_) {}
 }
 
-const OUTER_BG  = '#131929';
-const CENTER_BG = '#1E2535';
-const ICON_COLOR = '#8892A4';
-const ICON_ACTIVE = '#FFFFFF';
-
 export function DPadW({ widget, onAction, debug = false }: Props) {
+  const theme = useTheme();
   const containerRef = useRef<View>(null);
   const containerSize = useRef({ w: 0, h: 0 });
   // Page-absolute position of the container, updated via measureInWindow after layout
@@ -147,7 +144,9 @@ export function DPadW({ widget, onAction, debug = false }: Props) {
           width: '88%',
           aspectRatio: 1,
           borderRadius: 9999,
-          backgroundColor: OUTER_BG,
+          backgroundColor: theme.colors.surface,
+          borderWidth: 1,
+          borderColor: theme.colors.border,
           alignItems: 'center',
           justifyContent: 'center',
           overflow: 'hidden',
@@ -155,16 +154,16 @@ export function DPadW({ widget, onAction, debug = false }: Props) {
       >
         {/* ── Directional arrows ── */}
         <Animated.View style={{ position: 'absolute', top: '9%', opacity: anim.up }}>
-          <Ionicons name="chevron-up" size={24} color={ICON_COLOR} />
+          <Ionicons name="chevron-up" size={24} color={theme.colors.textSecondary} />
         </Animated.View>
         <Animated.View style={{ position: 'absolute', left: '9%', opacity: anim.left }}>
-          <Ionicons name="chevron-back" size={24} color={ICON_COLOR} />
+          <Ionicons name="chevron-back" size={24} color={theme.colors.textSecondary} />
         </Animated.View>
         <Animated.View style={{ position: 'absolute', right: '9%', opacity: anim.right }}>
-          <Ionicons name="chevron-forward" size={24} color={ICON_COLOR} />
+          <Ionicons name="chevron-forward" size={24} color={theme.colors.textSecondary} />
         </Animated.View>
         <Animated.View style={{ position: 'absolute', bottom: '9%', opacity: anim.down }}>
-          <Ionicons name="chevron-down" size={24} color={ICON_COLOR} />
+          <Ionicons name="chevron-down" size={24} color={theme.colors.textSecondary} />
         </Animated.View>
 
         {/* ── Center OK button ── */}
@@ -173,13 +172,13 @@ export function DPadW({ widget, onAction, debug = false }: Props) {
             width: '36%',
             aspectRatio: 1,
             borderRadius: 9999,
-            backgroundColor: CENTER_BG,
+            backgroundColor: theme.colors.primary,
             alignItems: 'center',
             justifyContent: 'center',
             opacity: anim.center,
           }}
         >
-          <Text style={{ color: ICON_ACTIVE, fontWeight: '700', fontSize: 14, letterSpacing: 0.5 }}>
+          <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 14, letterSpacing: 0.5 }}>
             OK
           </Text>
         </Animated.View>

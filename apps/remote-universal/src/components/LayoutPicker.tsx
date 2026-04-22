@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { getLayoutsForDeviceType } from '@remote/device-sdk';
 import type { DeviceType } from '@remote/core';
+import { useTheme } from '@remote/ui-kit';
 
 // Derive an accent color from the layout id prefix (brand or universal)
 const BRAND_ACCENT: Record<string, string> = {
@@ -23,11 +24,12 @@ interface Props {
 }
 
 export function LayoutPicker({ deviceType, selected, onSelect }: Props): React.ReactElement {
+  const theme = useTheme();
   const layouts = getLayoutsForDeviceType(deviceType);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Choose Layout</Text>
+      <Text style={[styles.title, { color: theme.colors.text, fontFamily: theme.typography.fontFamilyBold }]}>Choose Layout</Text>
       {layouts.map((layout) => {
         const isSelected = selected === layout.id;
         const accent = accentForId(layout.id);
@@ -35,21 +37,21 @@ export function LayoutPicker({ deviceType, selected, onSelect }: Props): React.R
         return (
           <TouchableOpacity
             key={layout.id}
-            style={[styles.option, isSelected && { borderColor: accent }]}
+            style={[styles.option, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, isSelected && { borderColor: accent }]}
             onPress={() => onSelect(layout.id)}
             activeOpacity={0.7}
           >
             <View style={[styles.accent, { backgroundColor: accent }]} />
             <View style={styles.content}>
               <View style={styles.titleRow}>
-                <Text style={styles.optionTitle}>{layout.name}</Text>
+                <Text style={[styles.optionTitle, { color: theme.colors.text, fontFamily: theme.typography.fontFamilyBold }]}>{layout.name}</Text>
                 {isUniversal && (
                   <View style={[styles.badge, { backgroundColor: accent + '22' }]}>
                     <Text style={[styles.badgeText, { color: accent }]}>Universal</Text>
                   </View>
                 )}
               </View>
-              <Text style={styles.subtitle}>
+              <Text style={[styles.subtitle, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamily }]}> 
                 {isUniversal ? 'Works with any compatible device' : 'Brand-specific controls'}
               </Text>
             </View>

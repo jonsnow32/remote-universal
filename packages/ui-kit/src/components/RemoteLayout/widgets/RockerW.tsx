@@ -3,6 +3,7 @@ import { View, Text, PanResponder, Animated } from 'react-native';
 import type { RockerWidget } from '@remote/core';
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import type * as HapticsType from 'expo-haptics';
+import { useTheme } from '../../../theme/ThemeProvider';
 
 interface Props {
   widget: RockerWidget;
@@ -10,10 +11,6 @@ interface Props {
 }
 
 const SWIPE_THRESHOLD = 18;
-const PILL_BG     = '#131929';
-const DIVIDER_COLOR = '#1E2535';
-const ICON_COLOR  = '#8892A4';
-
 function haptic() {
   try {
     const H = require('expo-haptics') as typeof HapticsType;
@@ -22,6 +19,7 @@ function haptic() {
 }
 
 export function RockerW({ widget, onAction }: Props) {
+  const theme = useTheme();
   const containerHeight = useRef(0);
   const upAnim   = useRef(new Animated.Value(1)).current;
   const downAnim = useRef(new Animated.Value(1)).current;
@@ -79,10 +77,10 @@ export function RockerW({ widget, onAction }: Props) {
       <Ionicons
         name={(iconName ?? fallbackIcon) as React.ComponentProps<typeof Ionicons>['name']}
         size={20}
-        color={ICON_COLOR}
+        color={theme.colors.textSecondary}
       />
       {label ? (
-        <Text style={{ color: ICON_COLOR, fontSize: 10, marginTop: 3 }}>{label}</Text>
+        <Text style={{ color: theme.colors.textSecondary, fontSize: 10, marginTop: 3 }}>{label}</Text>
       ) : null}
     </>
   );
@@ -98,9 +96,9 @@ export function RockerW({ widget, onAction }: Props) {
         style={{
           flex: 1,
           borderRadius: 28,
-          backgroundColor: PILL_BG,
+          backgroundColor: theme.colors.surface,
           borderWidth: 1,
-          borderColor: DIVIDER_COLOR,
+          borderColor: theme.colors.border,
           overflow: 'hidden',
         }}
       >
@@ -111,7 +109,7 @@ export function RockerW({ widget, onAction }: Props) {
           {renderZoneContent(widget.upIcon, widget.upLabel, 'chevron-up')}
         </Animated.View>
 
-        <View style={{ height: 1, backgroundColor: DIVIDER_COLOR }} />
+        <View style={{ height: 1, backgroundColor: theme.colors.border }} />
 
         {/* ─ Optional mid zone ─ */}
         {hasMid && (
@@ -123,13 +121,13 @@ export function RockerW({ widget, onAction }: Props) {
                 <Ionicons
                   name={widget.midIcon as React.ComponentProps<typeof Ionicons>['name']}
                   size={18}
-                  color={ICON_COLOR}
+                  color={theme.colors.textSecondary}
                 />
               ) : (
-                <Text style={{ color: ICON_COLOR, fontSize: 11 }}>{widget.midLabel}</Text>
+                <Text style={{ color: theme.colors.textSecondary, fontSize: 11 }}>{widget.midLabel}</Text>
               )}
             </Animated.View>
-            <View style={{ height: 1, backgroundColor: DIVIDER_COLOR }} />
+            <View style={{ height: 1, backgroundColor: theme.colors.border }} />
           </>
         )}
 

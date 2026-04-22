@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -20,10 +20,14 @@ import { RadarScanner } from '../components/RadarScanner';
 import { DeviceCard } from '../components/DeviceCard';
 import { AddDeviceSheet } from '../components/AddDeviceSheet';
 import type { AddDeviceResult } from '../components/AddDeviceSheet';
+import { useTheme } from '@remote/ui-kit';
+import type { BrandTheme } from '@remote/ui-kit';
 
 export function DiscoveryScreen(): React.ReactElement {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const { status, devices, startScan } = useDiscovery();
   const [showAddSheet, setShowAddSheet] = useState(false);
   const [addSheetDefaultProtocol, setAddSheetDefaultProtocol] = useState<ConnectionProtocol | undefined>();
@@ -107,7 +111,7 @@ export function DiscoveryScreen(): React.ReactElement {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0A0E1A" />
+      <StatusBar barStyle="dark-content" backgroundColor={theme.colors.background} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
@@ -119,13 +123,13 @@ export function DiscoveryScreen(): React.ReactElement {
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             style={styles.headerBtn}
           >
-            <Ionicons name="refresh" size={20} color={scanning ? '#4A5568' : '#8892A4'} />
+            <Ionicons name="refresh" size={20} color={scanning ? theme.colors.textSecondary : theme.colors.primary} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => navigation.navigate('Settings')}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Ionicons name="settings-outline" size={22} color="#8892A4" />
+            <Ionicons name="settings-outline" size={22} color={theme.colors.textSecondary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -161,7 +165,7 @@ export function DiscoveryScreen(): React.ReactElement {
               <Ionicons
                 name={usb.isConnected ? 'radio-outline' : 'warning-outline'}
                 size={22}
-                color={usb.isConnected ? '#00C9A7' : '#F6AD55'}
+                color={usb.isConnected ? theme.colors.success : theme.colors.warning}
               />
             </View>
             <View style={styles.usbBannerText}>
@@ -174,7 +178,7 @@ export function DiscoveryScreen(): React.ReactElement {
                 {usb.isConnected ? 'Tap to add an IR device' : 'Tap to grant permission'}
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color="#4A5568" />
+            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
           </TouchableOpacity>
         </View>
       )}
@@ -194,7 +198,9 @@ export function DiscoveryScreen(): React.ReactElement {
       />
 
       {/* + Add Device Button */}
-      <View style={[styles.addBtnWrap, { paddingBottom: insets.bottom + 12 }]}>
+      <View
+        style={[styles.addBtnWrap, { paddingBottom: insets.bottom + 12 }]}
+      >
         <TouchableOpacity
           style={styles.addBtn}
           onPress={openAddSheet}
@@ -215,10 +221,10 @@ export function DiscoveryScreen(): React.ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: BrandTheme) { return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0E1A',
+    backgroundColor: theme.colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -228,9 +234,11 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#FFFFFF',
+    fontSize: 32,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    color: theme.colors.text,
+    fontFamily: theme.typography.fontFamilyBold,
   },
   headerActions: {
     flexDirection: 'row',
@@ -247,7 +255,8 @@ const styles = StyleSheet.create({
   scanStatus: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#00C9A7',
+    color: theme.colors.textSecondary,
+    fontFamily: theme.typography.fontFamily,
     marginTop: 8,
   },
   list: {
@@ -256,7 +265,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
-    color: '#4A5568',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
     paddingHorizontal: 40,
     lineHeight: 20,
@@ -269,20 +278,21 @@ const styles = StyleSheet.create({
     right: 0,
     paddingHorizontal: 20,
     paddingTop: 12,
-    backgroundColor: '#0A0E1A',
+    backgroundColor: theme.colors.background,
     borderTopWidth: 1,
-    borderTopColor: '#1E2535',
+    borderTopColor: theme.colors.border,
   },
   addBtn: {
-    backgroundColor: '#1E2535',
-    borderRadius: 14,
+    backgroundColor: theme.colors.warning,
+    borderRadius: 18,
     paddingVertical: 16,
     alignItems: 'center',
   },
   addBtnText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: theme.colors.text,
+    fontFamily: theme.typography.fontFamilyBold,
   },
   usbBannerWrap: {
     paddingHorizontal: 20,
@@ -297,12 +307,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   usbBannerReady: {
-    backgroundColor: 'rgba(0, 201, 167, 0.08)',
-    borderColor: 'rgba(0, 201, 167, 0.3)',
+    backgroundColor: `${theme.colors.success}14`,
+    borderColor: `${theme.colors.success}4D`,
   },
   usbBannerPending: {
-    backgroundColor: 'rgba(246, 173, 85, 0.08)',
-    borderColor: 'rgba(246, 173, 85, 0.3)',
+    backgroundColor: `${theme.colors.warning}14`,
+    borderColor: `${theme.colors.warning}4D`,
   },
   usbBannerIcon: {
     width: 36,
@@ -319,11 +329,11 @@ const styles = StyleSheet.create({
   usbBannerTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: theme.colors.text,
     marginBottom: 2,
   },
   usbBannerSub: {
     fontSize: 12,
-    color: '#8892A4',
+    color: theme.colors.textSecondary,
   },
-});
+}); }

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,8 @@ import { BLEModule, IRModule } from '@remote/native-modules';
 import { fetchIRCodesets, resolveIRCommand } from '../lib/irApi';
 import type { IRCodeset } from '../lib/irApi';
 import { useIRDatabase } from '../lib/irDatabase';
+import { useTheme } from '@remote/ui-kit';
+import type { BrandTheme } from '@remote/ui-kit';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -117,6 +119,8 @@ interface BLEDeviceItem {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: Props): React.ReactElement | null {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const slideAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
   const abortRef = useRef<AbortController | null>(null);
@@ -545,7 +549,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       {/* Backdrop */}
-      <Animated.View style={[styles.backdrop, { opacity: backdropAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.6] }) }]}>
+      <Animated.View style={[styles.backdrop, { opacity: backdropAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.28] }) }]}>
         <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
       </Animated.View>
 
@@ -555,23 +559,23 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
         style={styles.sheetWrapper}
         pointerEvents="box-none"
       >
-        <Animated.View style={[styles.sheet, { transform: [{ translateY: slideAnim }] }]}>
+        <Animated.View style={[styles.sheet, { backgroundColor: theme.colors.background, transform: [{ translateY: slideAnim }] }]}> 
           {/* Handle */}
-          <View style={styles.handle} />
+          <View style={[styles.handle, { backgroundColor: theme.colors.border }]} />
 
           {/* Header */}
-          <View style={styles.header}>
+          <View style={[styles.header, { borderBottomColor: theme.colors.border }]}> 
             {canGoBack && (
               <TouchableOpacity
                 onPress={handleBack}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+                <Ionicons name="arrow-back" size={22} color={theme.colors.text} />
               </TouchableOpacity>
             )}
-            <Text style={styles.headerTitle}>{headerTitle[step]}</Text>
+            <Text style={[styles.headerTitle, { color: theme.colors.text, fontFamily: theme.typography.fontFamilyBold }]}>{headerTitle[step]}</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close" size={22} color="#8892A4" />
+              <Ionicons name="close" size={22} color={theme.colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
@@ -579,11 +583,11 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
           {step === 'search' && (
             <ScrollView style={styles.body} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <View style={styles.searchBar}>
-                <Ionicons name="search" size={18} color="#4A5568" />
+                <Ionicons name="search" size={18} color={theme.colors.textSecondary} />
                 <TextInput
                   style={styles.searchInput}
                   placeholder="Search brand or model..."
-                  placeholderTextColor="#4A5568"
+                  placeholderTextColor={theme.colors.textSecondary}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                   returnKeyType="search"
@@ -591,7 +595,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
                 />
                 {searchQuery.length > 0 && (
                   <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Ionicons name="close-circle" size={18} color="#4A5568" />
+                    <Ionicons name="close-circle" size={18} color={theme.colors.textSecondary} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -601,7 +605,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
                 <>
                   <Text style={styles.sectionTitle}>POPULAR BRANDS</Text>
                   {brandsLoading ? (
-                    <ActivityIndicator color="#6C63FF" style={{ marginTop: 20 }} />
+                    <ActivityIndicator color={theme.colors.primary} style={{ marginTop: 20 }} />
                   ) : (
                     filteredBrands.slice(0, 15).map(brand => (
                       <TouchableOpacity
@@ -614,7 +618,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
                           <Text style={styles.brandAvatarText}>{brand.name.charAt(0)}</Text>
                         </View>
                         <Text style={styles.brandName}>{brand.name}</Text>
-                        <Ionicons name="chevron-forward" size={16} color="#3A4257" />
+                        <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
                       </TouchableOpacity>
                     ))
                   )}
@@ -637,7 +641,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
                             <Text style={styles.brandAvatarText}>{brand.name.charAt(0)}</Text>
                           </View>
                           <Text style={styles.brandName}>{brand.name}</Text>
-                          <Ionicons name="chevron-forward" size={16} color="#3A4257" />
+                          <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
                         </TouchableOpacity>
                       ))}
                     </>
@@ -646,7 +650,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
                   {/* Model matches */}
                   <Text style={[styles.sectionTitle, { marginTop: filteredBrands.length > 0 ? 16 : 0 }]}>MODELS</Text>
                   {searchModelsLoading ? (
-                    <ActivityIndicator color="#6C63FF" style={{ marginTop: 12 }} />
+                    <ActivityIndicator color={theme.colors.primary} style={{ marginTop: 12 }} />
                   ) : searchedModels && searchedModels.length > 0 ? (
                     searchedModels.map(model => {
                       const brandName = brands?.find(b => b.slug === model.brand_id)?.name ?? model.brand_id;
@@ -666,7 +670,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
                               {brandName}{model.model_name ? ` · ${model.model_name}` : ''}{model.category ? ` · ${model.category.toUpperCase()}` : ''}
                             </Text>
                           </View>
-                          <Ionicons name="chevron-forward" size={16} color="#3A4257" />
+                          <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
                         </TouchableOpacity>
                       );
                     })
@@ -691,11 +695,11 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
               </Text>
 
               <View style={styles.searchBar}>
-                <Ionicons name="search" size={18} color="#4A5568" />
+                <Ionicons name="search" size={18} color={theme.colors.textSecondary} />
                 <TextInput
                   style={styles.searchInput}
                   placeholder="Search model..."
-                  placeholderTextColor="#4A5568"
+                  placeholderTextColor={theme.colors.textSecondary}
                   value={modelSearchQuery}
                   onChangeText={setModelSearchQuery}
                   returnKeyType="search"
@@ -704,7 +708,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
               </View>
 
               {modelsLoading ? (
-                <ActivityIndicator color="#6C63FF" style={{ marginTop: 20 }} />
+                <ActivityIndicator color={theme.colors.primary} style={{ marginTop: 20 }} />
               ) : (
                 filteredModels.map((model, idx) => (
                   <TouchableOpacity
@@ -724,7 +728,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
                         <Text style={styles.popularText}>Popular</Text>
                       </View>
                     )}
-                    <Ionicons name="chevron-forward" size={16} color="#3A4257" style={{ marginLeft: 8 }} />
+                    <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} style={{ marginLeft: 8 }} />
                   </TouchableOpacity>
                 ))
               )}
@@ -765,7 +769,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
               <View style={styles.bleScanHeader}>
                 {bleScanStatus === 'scanning' ? (
                   <View style={styles.bleScanStatusRow}>
-                    <ActivityIndicator size="small" color="#6C63FF" style={{ marginRight: 8 }} />
+                    <ActivityIndicator size="small" color={theme.colors.primary} style={{ marginRight: 8 }} />
                     <Text style={styles.bleScanStatusText}>Scanning for devices…</Text>
                   </View>
                 ) : bleScanStatus === 'unavailable' ? (
@@ -784,7 +788,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
                       onPress={startBleScan}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <Ionicons name="refresh" size={14} color="#8892A4" />
+                      <Ionicons name="refresh" size={14} color={theme.colors.textSecondary} />
                       <Text style={styles.bleScanRescanText}>Rescan</Text>
                     </TouchableOpacity>
                   </View>
@@ -795,13 +799,13 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
               <ScrollView style={styles.bleScanList} showsVerticalScrollIndicator={false}>
                 {bleDevices.length === 0 && bleScanStatus !== 'scanning' && (
                   <View style={styles.bleEmptyWrap}>
-                    <Ionicons name="bluetooth" size={48} color="#1E2535" />
+                    <Ionicons name="bluetooth" size={48} color={theme.colors.textSecondary} />
                     <Text style={styles.bleEmptyTitle}>No devices found</Text>
                     <Text style={styles.bleEmptySubtitle}>
                       Make sure the device is in pairing mode and within 10 m.
                     </Text>
                     <TouchableOpacity style={styles.bleScanRescanBtnLg} onPress={startBleScan} activeOpacity={0.8}>
-                      <Ionicons name="refresh" size={16} color="#6C63FF" style={{ marginRight: 6 }} />
+                      <Ionicons name="refresh" size={16} color={theme.colors.primary} style={{ marginRight: 6 }} />
                       <Text style={styles.bleScanRescanTextLg}>Scan again</Text>
                     </TouchableOpacity>
                   </View>
@@ -815,13 +819,13 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
                     activeOpacity={0.7}
                   >
                     <View style={styles.bleDeviceIcon}>
-                      <Ionicons name="bluetooth" size={18} color="#6C63FF" />
+                      <Ionicons name="bluetooth" size={18} color={theme.colors.primary} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.bleDeviceName}>{device.name}</Text>
                       <Text style={styles.bleDeviceId} numberOfLines={1}>{device.id}</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={16} color="#3A4257" />
+                    <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
                   </TouchableOpacity>
                 ))}
                 <View style={{ height: 24 }} />
@@ -836,11 +840,11 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
 
               <Text style={styles.fieldLabel}>{addrCfg.label}</Text>
               <View style={styles.searchBar}>
-                <Ionicons name={addrCfg.icon} size={18} color="#4A5568" />
+                <Ionicons name={addrCfg.icon} size={18} color={theme.colors.textSecondary} />
                 <TextInput
                   style={styles.searchInput}
                   placeholder={addrCfg.placeholder}
-                  placeholderTextColor="#4A5568"
+                  placeholderTextColor={theme.colors.textSecondary}
                   value={address}
                   onChangeText={setAddress}
                   keyboardType={addrCfg.keyboardType}
@@ -850,13 +854,13 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
                 />
                 {address.length > 0 && (
                   <TouchableOpacity onPress={() => setAddress('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Ionicons name="close-circle" size={18} color="#4A5568" />
+                    <Ionicons name="close-circle" size={18} color={theme.colors.textSecondary} />
                   </TouchableOpacity>
                 )}
               </View>
 
               <View style={styles.hintBox}>
-                <Ionicons name="information-circle-outline" size={16} color="#4A5568" />
+                <Ionicons name="information-circle-outline" size={16} color={theme.colors.textSecondary} />
                 <Text style={styles.hintText}>{addrCfg.hint}</Text>
               </View>
 
@@ -877,7 +881,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
             <View style={styles.connectingWrap}>
               {irSetupPhase === 'loading' && (
                 <>
-                  <ActivityIndicator size="large" color="#FFB347" style={{ marginBottom: 24 }} />
+                  <ActivityIndicator size="large" color={theme.colors.warning} style={{ marginBottom: 24 }} />
                   <Text style={styles.connectingTitle}>Finding IR codes…</Text>
                   <Text style={styles.connectingSubtitle}>
                     Searching the IR database for {selectedBrand} {selectedModel}
@@ -919,12 +923,12 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
                     </TouchableOpacity>
 
                     <TouchableOpacity
-                      style={[styles.retryBtn, { backgroundColor: '#2A3147', flex: 1 }]}
+                      style={[styles.retryBtn, { backgroundColor: theme.colors.border, flex: 1 }]}
                       onPress={() => void handleIRNextCodeset()}
                       activeOpacity={0.8}
                     >
-                      <Ionicons name="arrow-forward" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-                      <Text style={[styles.retryBtnText, { color: '#FFFFFF' }]}>Try Next</Text>
+                      <Ionicons name="arrow-forward" size={18} color={theme.colors.text} style={{ marginRight: 6 }} />
+                      <Text style={[styles.retryBtnText, { color: theme.colors.text }]}>Try Next</Text>
                     </TouchableOpacity>
                   </View>
 
@@ -979,7 +983,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
             <View style={styles.connectingWrap}>
               {connectPhase === 'connecting' && (
                 <>
-                  <ActivityIndicator size="large" color="#4FC3F7" style={{ marginBottom: 24 }} />
+                  <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginBottom: 24 }} />
                   <Text style={styles.connectingTitle}>Connecting…</Text>
                   <Text style={styles.connectingSubtitle}>
                     {selectedProtocol === 'ir'
@@ -1027,7 +1031,7 @@ export function AddDeviceSheet({ visible, onClose, onSelect, defaultProtocol }: 
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+function makeStyles(theme: BrandTheme) { return StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#000000',
@@ -1038,7 +1042,7 @@ const styles = StyleSheet.create({
   },
   sheet: {
     height: SHEET_HEIGHT,
-    backgroundColor: '#0D1220',
+    backgroundColor: theme.colors.background,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     overflow: 'hidden',
@@ -1047,7 +1051,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#2A3147',
+    backgroundColor: theme.colors.border,
     alignSelf: 'center',
     marginTop: 10,
   },
@@ -1058,14 +1062,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#1E2535',
+    borderBottomColor: theme.colors.border,
     gap: 12,
   },
   headerTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: theme.colors.text,
   },
   body: {
     flex: 1,
@@ -1075,24 +1079,24 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#141928',
+    backgroundColor: theme.colors.surface,
     borderRadius: 12,
     paddingHorizontal: 14,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#1E2535',
+    borderColor: theme.colors.border,
   },
   searchInput: {
     flex: 1,
     height: 44,
     fontSize: 15,
-    color: '#FFFFFF',
+    color: theme.colors.text,
     marginLeft: 10,
   },
   sectionTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#4A5568',
+    color: theme.colors.textSecondary,
     letterSpacing: 1,
     marginBottom: 12,
   },
@@ -1104,96 +1108,96 @@ const styles = StyleSheet.create({
   },
   categoryTile: {
     width: '47%',
-    backgroundColor: '#141928',
+    backgroundColor: theme.colors.surface,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#1E2535',
+    borderColor: theme.colors.border,
     gap: 6,
   },
   categoryTileActive: {
-    borderColor: '#4FC3F7',
-    backgroundColor: '#4FC3F710',
+    borderColor: theme.colors.primary,
+    backgroundColor: `${theme.colors.primary}18`,
   },
   categoryLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#8892A4',
+    color: theme.colors.textSecondary,
   },
   categoryLabelActive: {
-    color: '#4FC3F7',
+    color: theme.colors.primary,
   },
   sectionDivider: {
     textAlign: 'center',
     fontSize: 13,
-    color: '#3A4257',
+    color: theme.colors.text,
     fontWeight: '600',
     marginBottom: 20,
   },
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#141928',
+    backgroundColor: theme.colors.surface,
     borderRadius: 12,
     padding: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#1E2535',
+    borderColor: theme.colors.border,
     gap: 12,
   },
   brandAvatar: {
     width: 36,
     height: 36,
     borderRadius: 8,
-    backgroundColor: '#1E2535',
+    backgroundColor: theme.colors.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
   brandAvatarText: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#8892A4',
+    color: theme.colors.textSecondary,
   },
   brandName: {
     flex: 1,
     fontSize: 15,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: theme.colors.text,
   },
   emptyText: {
     fontSize: 14,
-    color: '#4A5568',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
     marginTop: 20,
   },
   modelCount: {
     fontSize: 13,
-    color: '#8892A4',
+    color: theme.colors.textSecondary,
     marginBottom: 12,
   },
   modelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#141928',
+    backgroundColor: theme.colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#1E2535',
+    borderColor: theme.colors.border,
   },
   modelNumber: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: theme.colors.text,
   },
   modelName: {
     fontSize: 12,
-    color: '#8892A4',
+    color: theme.colors.textSecondary,
     marginTop: 2,
   },
   popularBadge: {
-    backgroundColor: '#4FC3F722',
+    backgroundColor: `${theme.colors.primary}1A`,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 4,
@@ -1201,28 +1205,28 @@ const styles = StyleSheet.create({
   popularText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#4FC3F7',
+    color: theme.colors.primary,
   },
   connectBtn: {
-    backgroundColor: '#4FC3F7',
+    backgroundColor: theme.colors.warning,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 24,
   },
   connectBtnDisabled: {
-    backgroundColor: '#1E2535',
+    backgroundColor: theme.colors.border,
   },
   connectBtnText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#0A0E1A',
+    color: theme.colors.text,
   },
   // ── Address step ────────────────────────────────────────────────────────
   fieldLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#8892A4',
+    color: theme.colors.textSecondary,
     marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
@@ -1231,17 +1235,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    backgroundColor: '#141928',
+    backgroundColor: theme.colors.surface,
     borderRadius: 10,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#1E2535',
+    borderColor: theme.colors.border,
   },
   hintText: {
     flex: 1,
     fontSize: 13,
-    color: '#4A5568',
+    color: theme.colors.textSecondary,
     lineHeight: 19,
   },
   // ── Connecting / failed step ─────────────────────────────────────────────
@@ -1254,12 +1258,12 @@ const styles = StyleSheet.create({
   connectingTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: theme.colors.text,
     marginBottom: 10,
   },
   connectingSubtitle: {
     fontSize: 14,
-    color: '#4A5568',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -1267,7 +1271,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#FF6B6B18',
+    backgroundColor: `${theme.colors.error}18`,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
@@ -1275,12 +1279,12 @@ const styles = StyleSheet.create({
   errorTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: theme.colors.text,
     marginBottom: 10,
   },
   errorMessage: {
     fontSize: 14,
-    color: '#8892A4',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: 32,
@@ -1288,7 +1292,7 @@ const styles = StyleSheet.create({
   retryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#4FC3F7',
+    backgroundColor: theme.colors.primary,
     borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 32,
@@ -1299,10 +1303,10 @@ const styles = StyleSheet.create({
   retryBtnText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#0A0E1A',
+    color: '#FFFFFF',
   },
   addAnywayBtn: {
-    backgroundColor: '#1E2535',
+    backgroundColor: theme.colors.surface,
     borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 32,
@@ -1313,14 +1317,14 @@ const styles = StyleSheet.create({
   addAnywayBtnText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#8892A4',
+    color: theme.colors.textSecondary,
   },
   cancelLink: {
     paddingVertical: 8,
   },
   cancelLinkText: {
     fontSize: 14,
-    color: '#4A5568',
+    color: theme.colors.textSecondary,
     fontWeight: '600',
   },
   // ── BLE Scan step ────────────────────────────────────────────────────────
@@ -1331,7 +1335,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#1E2535',
+    borderBottomColor: theme.colors.border,
   },
   bleScanStatusRow: {
     flexDirection: 'row',
@@ -1339,7 +1343,7 @@ const styles = StyleSheet.create({
   },
   bleScanStatusText: {
     fontSize: 13,
-    color: '#8892A4',
+    color: theme.colors.textSecondary,
     flex: 1,
   },
   bleScanRescanBtn: {
@@ -1349,7 +1353,7 @@ const styles = StyleSheet.create({
   },
   bleScanRescanText: {
     fontSize: 13,
-    color: '#8892A4',
+    color: theme.colors.textSecondary,
     fontWeight: '600',
   },
   bleScanList: {
@@ -1360,30 +1364,30 @@ const styles = StyleSheet.create({
   bleDeviceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#141928',
+    backgroundColor: theme.colors.surface,
     borderRadius: 12,
     padding: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#1E2535',
+    borderColor: theme.colors.border,
     gap: 12,
   },
   bleDeviceIcon: {
     width: 36,
     height: 36,
     borderRadius: 8,
-    backgroundColor: '#6C63FF18',
+    backgroundColor: `${theme.colors.primary}18`,
     alignItems: 'center',
     justifyContent: 'center',
   },
   bleDeviceName: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: theme.colors.text,
   },
   bleDeviceId: {
     fontSize: 11,
-    color: '#4A5568',
+    color: theme.colors.textSecondary,
     marginTop: 2,
   },
   bleEmptyWrap: {
@@ -1394,13 +1398,13 @@ const styles = StyleSheet.create({
   bleEmptyTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: theme.colors.text,
     marginTop: 16,
     marginBottom: 8,
   },
   bleEmptySubtitle: {
     fontSize: 14,
-    color: '#4A5568',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: 24,
@@ -1409,7 +1413,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: '#6C63FF',
+    borderColor: theme.colors.primary,
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 20,
@@ -1417,7 +1421,7 @@ const styles = StyleSheet.create({
   bleScanRescanTextLg: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#6C63FF',
+    color: theme.colors.primary,
   },
-});
+}); }
 

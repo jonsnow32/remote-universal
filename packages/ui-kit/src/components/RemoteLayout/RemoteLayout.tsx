@@ -3,6 +3,7 @@ import { View, Text, ScrollView } from 'react-native';
 import type { LayoutSection } from '@remote/core';
 import { SectionGrid } from './SectionGrid';
 import type { TextInputWHandle } from './widgets/TextInputW';
+import { useTheme } from '../../theme/ThemeProvider';
 
 // ─── Deprecated aliases kept for backward compatibility ───────────────────────
 /** @deprecated Use ButtonWidget from @remote/core */
@@ -30,6 +31,7 @@ export interface RemoteLayoutProps {
 }
 
 export function RemoteLayout({ sections, onButtonPress, onRegisterTextInput }: RemoteLayoutProps): React.ReactElement {
+  const theme = useTheme();
   return (
     <ScrollView
       contentContainerStyle={{ paddingVertical: 12, paddingHorizontal: 0 }}
@@ -40,10 +42,11 @@ export function RemoteLayout({ sections, onButtonPress, onRegisterTextInput }: R
           {section.title && (
             <Text
               style={{
-                color: '#555E74',
+                color: theme.colors.textSecondary,
                 fontSize: 10,
                 letterSpacing: 1.4,
                 fontWeight: '600',
+                fontFamily: theme.typography.fontFamilyBold,
                 paddingHorizontal: 16,
                 marginBottom: 6,
               }}

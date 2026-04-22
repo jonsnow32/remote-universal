@@ -17,6 +17,8 @@ import { usePro } from '../hooks/usePro';
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { getApiBaseUrl, setApiBaseUrl } from '../lib/apiUrl';
 import { appConfig } from '../config';
+import { useTheme } from '@remote/ui-kit';
+import { useThemeMode } from '../lib/themeMode';
 
 interface SettingRow {
   id: string;
@@ -41,6 +43,8 @@ const ABOUT_ROWS: SettingRow[] = [
 
 export function SettingsScreen(): React.ReactElement {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const theme = useTheme();
+  const { themeMode, setThemeMode } = useThemeMode();
   const { isPro } = usePro();
   const [settings, setSettings] = useState<Record<string, boolean>>({
     notifications: true,
@@ -79,42 +83,42 @@ export function SettingsScreen(): React.ReactElement {
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <StatusBar barStyle="light-content" backgroundColor="#0A0E1A" />
+    <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]} showsVerticalScrollIndicator={false}>
+      <StatusBar barStyle={themeMode === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
 
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7}>
-          <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
+          <Ionicons name="chevron-back" size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>Settings</Text>
+        <Text style={[styles.title, { color: theme.colors.text, fontFamily: theme.typography.fontFamilyBold }]}>Settings</Text>
       </View>
 
       {/* Pro status banner */}
       {isPro ? (
-        <View style={styles.proBanner}>
-          <Ionicons name="flash" size={24} color="#6C63FF" />
+        <View style={[styles.proBanner, { backgroundColor: theme.colors.surface, borderColor: theme.colors.secondary + '66' }]}>
+          <Ionicons name="flash" size={24} color={theme.colors.secondary} />
           <View style={styles.proBannerText}>
-            <Text style={styles.proBannerTitle}>Pro Active</Text>
-            <Text style={styles.proBannerDesc}>All features unlocked — thank you!</Text>
+            <Text style={[styles.proBannerTitle, { color: theme.colors.text, fontFamily: theme.typography.fontFamilyBold }]}>Pro Active</Text>
+            <Text style={[styles.proBannerDesc, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamily }]}>All features unlocked — thank you!</Text>
           </View>
-          <View style={styles.proActiveBadge}>
+          <View style={[styles.proActiveBadge, { backgroundColor: theme.colors.warning }]}> 
             <Text style={styles.proActiveBadgeText}>ACTIVE</Text>
           </View>
         </View>
       ) : (
         <TouchableOpacity
-          style={styles.upgradeCard}
+          style={[styles.upgradeCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.secondary }]}
           onPress={() => navigation.navigate('Paywall', { trigger: 'settings' })}
           activeOpacity={0.85}
         >
           <View style={styles.upgradeCardLeft}>
-            <Ionicons name="flash" size={24} color="#6C63FF" />
+            <Ionicons name="flash" size={24} color={theme.colors.secondary} />
             <View>
-              <Text style={styles.upgradeCardTitle}>Upgrade to Pro</Text>
-              <Text style={styles.upgradeCardDesc}>Unlimited devices · Macros · Cloud sync</Text>
+              <Text style={[styles.upgradeCardTitle, { color: theme.colors.text, fontFamily: theme.typography.fontFamilyBold }]}>Upgrade to Pro</Text>
+              <Text style={[styles.upgradeCardDesc, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamily }]}>Unlimited devices · Macros · Cloud sync</Text>
             </View>
           </View>
-          <Ionicons name="chevron-forward" size={24} color="#6C63FF" />
+          <Ionicons name="chevron-forward" size={24} color={theme.colors.secondary} />
         </TouchableOpacity>
       )}
 
@@ -133,27 +137,89 @@ export function SettingsScreen(): React.ReactElement {
       </View> */}
 
       {/* General */}
-      <Text style={styles.sectionLabel}>GENERAL</Text>
-      <View style={styles.section}>
+      <Text style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>GENERAL</Text>
+      <View style={[styles.section, { backgroundColor: theme.colors.surface }]}> 
         {GENERAL_SETTINGS.map((item, index) => (
           <View key={item.id} style={[styles.row, index < GENERAL_SETTINGS.length - 1 && styles.rowBorder]}>
             <View style={styles.rowText}>
-              <Text style={styles.rowLabel}>{item.label}</Text>
-              {item.description && <Text style={styles.rowDesc}>{item.description}</Text>}
+              <Text style={[styles.rowLabel, { color: theme.colors.text, fontFamily: theme.typography.fontFamily }]}>{item.label}</Text>
+              {item.description && <Text style={[styles.rowDesc, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamily }]}>{item.description}</Text>}
             </View>
             <Switch
               value={settings[item.id] ?? false}
               onValueChange={() => toggle(item.id)}
-              trackColor={{ false: '#2A3147', true: '#6C63FF' }}
-              thumbColor="#FFFFFF"
+              trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
+              thumbColor={theme.colors.surface}
             />
           </View>
         ))}
       </View>
 
+      <Text style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>APPEARANCE</Text>
+      <View style={[styles.section, { backgroundColor: theme.colors.surface }]}> 
+        <View style={styles.row}>
+          <View style={styles.rowText}>
+            <Text style={[styles.rowLabel, { color: theme.colors.text, fontFamily: theme.typography.fontFamily }]}>Theme</Text>
+            <Text style={[styles.rowDesc, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamily }]}>Choose app color scheme</Text>
+          </View>
+        </View>
+
+        <View style={styles.themeOptionsRow}>
+          <TouchableOpacity
+            style={[
+              styles.themeOption,
+              {
+                backgroundColor: themeMode === 'light' ? theme.colors.primary : theme.colors.background,
+                borderColor: themeMode === 'light' ? theme.colors.primary : theme.colors.border,
+              },
+            ]}
+            onPress={() => setThemeMode('light')}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="sunny-outline" size={16} color={themeMode === 'light' ? '#FFFFFF' : theme.colors.textSecondary} />
+            <Text
+              style={[
+                styles.themeOptionLabel,
+                {
+                  color: themeMode === 'light' ? '#FFFFFF' : theme.colors.textSecondary,
+                  fontFamily: themeMode === 'light' ? theme.typography.fontFamilyBold : theme.typography.fontFamily,
+                },
+              ]}
+            >
+              Light
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.themeOption,
+              {
+                backgroundColor: themeMode === 'dark' ? theme.colors.primary : theme.colors.background,
+                borderColor: themeMode === 'dark' ? theme.colors.primary : theme.colors.border,
+              },
+            ]}
+            onPress={() => setThemeMode('dark')}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="moon-outline" size={16} color={themeMode === 'dark' ? '#FFFFFF' : theme.colors.textSecondary} />
+            <Text
+              style={[
+                styles.themeOptionLabel,
+                {
+                  color: themeMode === 'dark' ? '#FFFFFF' : theme.colors.textSecondary,
+                  fontFamily: themeMode === 'dark' ? theme.typography.fontFamilyBold : theme.typography.fontFamily,
+                },
+              ]}
+            >
+              Dark
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* About */}
-      <Text style={styles.sectionLabel}>ABOUT</Text>
-      <View style={styles.section}>
+      <Text style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>ABOUT</Text>
+      <View style={[styles.section, { backgroundColor: theme.colors.surface }]}> 
         {ABOUT_ROWS.map((item, index) => (
           <TouchableOpacity
             key={item.id}
@@ -161,36 +227,36 @@ export function SettingsScreen(): React.ReactElement {
             activeOpacity={0.7}
           >
             <View style={styles.rowText}>
-              <Text style={styles.rowLabel}>{item.label}</Text>
-              {item.description && <Text style={styles.rowDesc}>{item.description}</Text>}
+              <Text style={[styles.rowLabel, { color: theme.colors.text, fontFamily: theme.typography.fontFamily }]}>{item.label}</Text>
+              {item.description && <Text style={[styles.rowDesc, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamily }]}>{item.description}</Text>}
             </View>
-            <Ionicons name="chevron-forward" size={18} color="#4A5568" />
+            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
           </TouchableOpacity>
         ))}
       </View>
 
       {/* Developer / Network */}
-      <Text style={styles.sectionLabel}>DEVELOPER</Text>
-      <View style={styles.section}>
+      <Text style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>DEVELOPER</Text>
+      <View style={[styles.section, { backgroundColor: theme.colors.surface }]}> 
         <View style={styles.row}>
           <View style={styles.rowText}>
-            <Text style={styles.rowLabel}>Backend URL</Text>
-            <Text style={styles.rowDesc}>Server IP for real-device testing</Text>
+            <Text style={[styles.rowLabel, { color: theme.colors.text, fontFamily: theme.typography.fontFamily }]}>Backend URL</Text>
+            <Text style={[styles.rowDesc, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamily }]}>Server IP for real-device testing</Text>
           </View>
         </View>
         <View style={styles.urlRowInput}>
           <TextInput
-            style={styles.urlInput}
+            style={[styles.urlInput, { backgroundColor: '#FFFFFF', borderColor: theme.colors.border, color: theme.colors.text }]}
             value={backendUrl}
             onChangeText={text => { setBackendUrl(text); setBackendUrlDirty(true); }}
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="url"
             placeholder="http://192.168.1.X:3000"
-            placeholderTextColor="#4A5568"
+            placeholderTextColor={theme.colors.textSecondary}
           />
           <TouchableOpacity
-            style={[styles.urlSaveBtn, !backendUrlDirty && styles.urlSaveBtnDisabled]}
+            style={[styles.urlSaveBtn, { backgroundColor: theme.colors.primary }, !backendUrlDirty && styles.urlSaveBtnDisabled]}
             onPress={saveBackendUrl}
             disabled={!backendUrlDirty}
           >
@@ -199,13 +265,13 @@ export function SettingsScreen(): React.ReactElement {
         </View>
         <TouchableOpacity style={[styles.row, styles.urlResetRow]} onPress={resetBackendUrl} activeOpacity={0.7}>
           <View style={styles.rowText}>
-            <Text style={[styles.rowLabel, { color: '#8892A4' }]}>Reset to default</Text>
+            <Text style={[styles.rowLabel, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamily }]}>Reset to default</Text>
           </View>
-          <Ionicons name="refresh" size={16} color="#4A5568" />
+          <Ionicons name="refresh" size={16} color={theme.colors.textSecondary} />
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity style={styles.signOutBtn} activeOpacity={0.8}>
+      <TouchableOpacity style={[styles.signOutBtn, { borderColor: theme.colors.error }]} activeOpacity={0.8}>
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>
 
@@ -416,5 +482,25 @@ const styles = StyleSheet.create({
   urlResetRow: {
     borderTopWidth: 1,
     borderTopColor: '#2A3147',
+  },
+  themeOptionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+  },
+  themeOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  themeOptionLabel: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

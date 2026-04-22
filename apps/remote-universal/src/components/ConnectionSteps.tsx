@@ -2,17 +2,19 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import type { ConnectionStep } from '../hooks/useConnection';
+import { useTheme } from '@remote/ui-kit';
 
 interface Props {
   steps: ConnectionStep[];
 }
 
 export function ConnectionSteps({ steps }: Props): React.ReactElement {
+  const theme = useTheme();
   return (
     <View style={styles.container}>
       {steps.map((step) => (
-        <View key={step.id} style={styles.row}>
-          <View style={[styles.iconWrap, stepIconStyle(step.status)]}>
+        <View key={step.id} style={[styles.row, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <View style={[styles.iconWrap, stepIconStyle(step.status, theme)]}>
             {step.status === 'done' && (
               <Ionicons name="checkmark" size={14} color="#FFFFFF" />
             )}
@@ -27,11 +29,11 @@ export function ConnectionSteps({ steps }: Props): React.ReactElement {
               <Ionicons name="close" size={14} color="#FFFFFF" />
             )}
           </View>
-          <Text style={[styles.label, step.status === 'pending' && styles.labelPending]}>
+          <Text style={[styles.label, { color: theme.colors.text, fontFamily: theme.typography.fontFamily }, step.status === 'pending' && [styles.labelPending, { color: theme.colors.textSecondary }]]}>
             {step.label}
           </Text>
           {step.status === 'error' && step.error && (
-            <Text style={styles.errorText} numberOfLines={2}>{step.error}</Text>
+            <Text style={[styles.errorText, { color: theme.colors.error, fontFamily: theme.typography.fontFamily }]} numberOfLines={2}>{step.error}</Text>
           )}
         </View>
       ))}
@@ -39,12 +41,12 @@ export function ConnectionSteps({ steps }: Props): React.ReactElement {
   );
 }
 
-function stepIconStyle(status: ConnectionStep['status']) {
+function stepIconStyle(status: ConnectionStep['status'], theme: ReturnType<typeof useTheme>) {
   switch (status) {
-    case 'done': return { backgroundColor: '#00C9A7' };
-    case 'running': return { backgroundColor: '#4FC3F7' };
-    case 'error': return { backgroundColor: '#FF4F4F' };
-    default: return { backgroundColor: '#1E2535' };
+    case 'done': return { backgroundColor: theme.colors.success };
+    case 'running': return { backgroundColor: theme.colors.primary };
+    case 'error': return { backgroundColor: theme.colors.error };
+    default: return { backgroundColor: theme.colors.border };
   }
 }
 

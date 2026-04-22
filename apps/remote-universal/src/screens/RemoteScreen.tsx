@@ -21,6 +21,7 @@ import { useIRResolver } from '../hooks/useIRResolver';
 import { ProtocolBadge } from '../components/ProtocolBadge';
 import { VoiceCommandModal } from '../components/VoiceCommandModal';
 import { useIRDatabase } from '../lib/irDatabase';
+import { useTheme } from '@remote/ui-kit';
 
 // ─── Layout helpers ──────────────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@ type ConnStatus = 'connecting' | 'connected' | 'error';
 export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const theme = useTheme();
   const { deviceName, deviceType, address, protocol, brand, layoutId, model, codesetId } = route.params;
 
   const irResolver = useIRResolver({
@@ -442,25 +444,25 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
     if (connStatus === 'connecting') {
       return (
         <View style={styles.statusRow}>
-          <ActivityIndicator size="small" color="#8892A4" style={{ marginRight: 6 }} />
-          <Text style={styles.statusText}>Connecting...</Text>
+          <ActivityIndicator size="small" color={theme.colors.textSecondary} style={{ marginRight: 6 }} />
+          <Text style={[styles.statusText, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamily }]}>Connecting...</Text>
         </View>
       );
     }
     if (connStatus === 'error') {
       return (
         <View style={styles.statusRow}>
-          <View style={[styles.dot, { backgroundColor: '#FF4F4F' }]} />
-          <Text style={[styles.statusText, { color: '#FF4F4F' }]}>Failed</Text>
+          <View style={[styles.dot, { backgroundColor: theme.colors.error }]} />
+          <Text style={[styles.statusText, { color: theme.colors.error, fontFamily: theme.typography.fontFamily }]}>Failed</Text>
           <TouchableOpacity onPress={() => setShowConnErrorModal(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.retryLink}>· Details</Text>
+            <Text style={[styles.retryLink, { color: theme.colors.primary }]}>· Details</Text>
           </TouchableOpacity>
         </View>
       );
     }
     return (
       <View style={styles.statusRow}>
-        <View style={[styles.dot, { backgroundColor: '#00C9A7' }]} />
+        <View style={[styles.dot, { backgroundColor: theme.colors.success }]} />
         <ProtocolBadge protocol={protocol} />
       </View>
     );
@@ -469,16 +471,16 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0A0E1A" />
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}> 
+      <StatusBar barStyle="dark-content" backgroundColor={theme.colors.background} />
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 8, borderBottomColor: theme.colors.border }]}> 
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+          <Ionicons name="arrow-back" size={22} color={theme.colors.text} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle} numberOfLines={1}>
+          <Text style={[styles.headerTitle, { color: theme.colors.text, fontFamily: theme.typography.fontFamilyBold }]} numberOfLines={1}>
             {`${deviceName} ${deviceType.toUpperCase()}`}
           </Text>
           {renderStatus()}
@@ -487,7 +489,7 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
           onPress={() => setShowLayoutPicker(true)}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Ionicons name="grid-outline" size={20} color="#8892A4" />
+          <Ionicons name="grid-outline" size={20} color={theme.colors.textSecondary} />
         </TouchableOpacity>
       </View>
 
@@ -518,10 +520,10 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
           onPress={() => setShowLayoutPicker(false)}
         >
           <View
-            style={[styles.pickerSheet, { paddingBottom: insets.bottom + 16 }]}
+            style={[styles.pickerSheet, { backgroundColor: theme.colors.surface, paddingBottom: insets.bottom + 16 }]}
             onStartShouldSetResponder={() => true}
           >
-            <View style={styles.pickerHandle} />
+            <View style={[styles.pickerHandle, { backgroundColor: theme.colors.border }]} />
             <LayoutPicker
               deviceType={deviceType}
               selected={selectedLayout}
@@ -539,31 +541,31 @@ export function RemoteScreen({ route }: RemoteScreenProps): React.ReactElement {
         onRequestClose={() => setShowConnErrorModal(false)}
       >
         <View style={styles.errorModalOverlay}>
-          <View style={[styles.errorModalCard, { paddingBottom: insets.bottom + 20 }]}>
-            <View style={styles.errorModalIcon}>
-              <Ionicons name="wifi-outline" size={32} color="#FF4F4F" />
+          <View style={[styles.errorModalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, paddingBottom: insets.bottom + 20 }]}> 
+            <View style={[styles.errorModalIcon, { backgroundColor: theme.colors.error + '22' }]}> 
+              <Ionicons name="wifi-outline" size={32} color={theme.colors.error} />
             </View>
-            <Text style={styles.errorModalTitle}>Connection Failed</Text>
-            <Text style={styles.errorModalDevice} numberOfLines={1}>
+            <Text style={[styles.errorModalTitle, { color: theme.colors.text, fontFamily: theme.typography.fontFamilyBold }]}>Connection Failed</Text>
+            <Text style={[styles.errorModalDevice, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamily }]} numberOfLines={1}>
               {brand ? `${brand} ${deviceType.toUpperCase()}` : deviceName}
             </Text>
-            <Text style={styles.errorModalAddress}>{address}</Text>
-            <View style={styles.errorModalDivider} />
-            <Text style={styles.errorModalMessage}>{connErrorMessage}</Text>
+            <Text style={[styles.errorModalAddress, { color: theme.colors.textSecondary }]}>{address}</Text>
+            <View style={[styles.errorModalDivider, { backgroundColor: theme.colors.border }]} />
+            <Text style={[styles.errorModalMessage, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamily }]}>{connErrorMessage}</Text>
             <TouchableOpacity
-              style={styles.errorModalRetryBtn}
+              style={[styles.errorModalRetryBtn, { backgroundColor: theme.colors.warning }]}
               onPress={handleRetry}
               activeOpacity={0.8}
             >
-              <Ionicons name="refresh-outline" size={16} color="#0A0E1A" style={{ marginRight: 6 }} />
-              <Text style={styles.errorModalRetryText}>Try Again</Text>
+              <Ionicons name="refresh-outline" size={16} color={theme.colors.text} style={{ marginRight: 6 }} />
+              <Text style={[styles.errorModalRetryText, { color: theme.colors.text, fontFamily: theme.typography.fontFamilyBold }]}>Try Again</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.errorModalBackBtn}
               onPress={() => navigation.goBack()}
               activeOpacity={0.7}
             >
-              <Text style={styles.errorModalBackText}>Go Back</Text>
+              <Text style={[styles.errorModalBackText, { color: theme.colors.textSecondary, fontFamily: theme.typography.fontFamily }]}>Go Back</Text>
             </TouchableOpacity>
           </View>
         </View>

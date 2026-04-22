@@ -3,6 +3,7 @@ import { View, Text, PanResponder, Animated } from 'react-native';
 import type { TouchpadWidget } from '@remote/core';
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import type * as HapticsType from 'expo-haptics';
+import { useTheme } from '../../../theme/ThemeProvider';
 
 interface Props {
   widget: TouchpadWidget;
@@ -19,6 +20,7 @@ function haptic() {
 }
 
 export function TouchpadW({ widget, onAction }: Props) {
+  const theme = useTheme();
   const rippleAnim  = useRef(new Animated.Value(0)).current;
   const rippleOpacity = useRef(new Animated.Value(0)).current;
   const [ripplePos, setRipplePos] = useState({ x: 0, y: 0 });
@@ -89,9 +91,9 @@ export function TouchpadW({ widget, onAction }: Props) {
         style={{
           flex: 1,
           borderRadius: 16,
-          backgroundColor: '#0E1420',
+          backgroundColor: theme.colors.surface,
           borderWidth: 1,
-          borderColor: '#1A2030',
+          borderColor: theme.colors.border,
           overflow: 'hidden',
           alignItems: 'center',
           justifyContent: 'center',
@@ -99,11 +101,11 @@ export function TouchpadW({ widget, onAction }: Props) {
       >
         {/* hint label */}
         {widget.hint ? (
-          <Text style={{ color: '#3C4560', fontSize: 11, letterSpacing: 0.5 }}>
+          <Text style={{ color: theme.colors.textSecondary, fontSize: 11, letterSpacing: 0.5 }}>
             {widget.hint}
           </Text>
         ) : (
-          <Ionicons name="hand-left-outline" size={24} color="#3C4560" />
+          <Ionicons name="hand-left-outline" size={24} color={theme.colors.textSecondary} />
         )}
 
         {/* ripple */}
@@ -118,7 +120,7 @@ export function TouchpadW({ widget, onAction }: Props) {
             marginLeft: rippleAnim.interpolate({ inputRange: [0, 1], outputRange: [-5, -100] }),
             marginTop:  rippleAnim.interpolate({ inputRange: [0, 1], outputRange: [-5, -100] }),
             borderRadius: 100,
-            backgroundColor: '#6B8AFF',
+            backgroundColor: theme.colors.primary,
             opacity: rippleOpacity,
           }}
         />
